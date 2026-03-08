@@ -79,6 +79,7 @@ declare module '$env/static/private' {
 	export const VSCODE_PYTHON_AUTOACTIVATE_GUARD: string;
 	export const TICKTICK_PASSWORD: string;
 	export const GIO_LAUNCHED_DESKTOP_FILE_PID: string;
+	export const ANTIGRAVITY_AGENT: string;
 	export const COLORTERM: string;
 	export const COLOR: string;
 	export const NVM_DIR: string;
@@ -282,6 +283,7 @@ declare module '$env/dynamic/private' {
 		VSCODE_PYTHON_AUTOACTIVATE_GUARD: string;
 		TICKTICK_PASSWORD: string;
 		GIO_LAUNCHED_DESKTOP_FILE_PID: string;
+		ANTIGRAVITY_AGENT: string;
 		COLORTERM: string;
 		COLOR: string;
 		NVM_DIR: string;

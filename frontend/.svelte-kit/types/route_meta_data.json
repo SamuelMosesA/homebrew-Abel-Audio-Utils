@@ -11,5 +11,8 @@
 	],
 	"/stream": [
 		"src/routes/+layout.ts"
+	],
+	"/subtitles": [
+		"src/routes/+layout.ts"
 	]
 }

@@ -115,7 +115,6 @@ func (m *TranslationManager) StopSession(language string) {
 
 func (m *TranslationManager) runSession(s *TranslationSession) {
 	defer m.sessions.Delete(s.Language)
-	defer close(s.AudioOut)
 
 	log.Printf("[GEMINI] Starting translation session for %s", s.Language)
 
@@ -154,13 +153,18 @@ Try to understand the idioms and phrases and cultural contexts of British and Am
 		return
 	}
 
+	var wg sync.WaitGroup
+	wg.Add(1)
+	receiveLoopCtx, receiveLoopCancel := context.WithCancel(ctx)
+
 	// Receive loop
 	go func() {
+		defer wg.Done()
+		defer receiveLoopCancel()
 		for {
 			resp, err := liveSession.Receive()
 			if err != nil {
 				log.Printf("[GEMINI] Session %s receive error: %v", s.Language, err)
-				s.cancel()
 				return
 			}
 			if resp.ServerContent != nil {
@@ -197,6 +201,7 @@ Try to understand the idioms and phrases and cultural contexts of British and Am
 	// Send loop
 	lastSend := time.Now()
 	sendCount := 0
+Loop:
 	for {
 		select {
 		case data := <-s.AudioIn:
@@ -208,8 +213,7 @@ Try to understand the idioms and phrases and cultural contexts of British and Am
 			})
 			if err != nil {
 				log.Printf("[GEMINI] Session %s send error: %v", s.Language, err)
-				s.cancel()
-				return
+				break Loop
 			}
 			sendCount++
 			if time.Since(lastSend) > 5*time.Second {
@@ -225,10 +229,15 @@ Try to understand the idioms and phrases and cultural contexts of British and Am
 				lastSend = time.Now()
 			}
 		case <-s.ctx.Done():
-			liveSession.Close()
-			return
+			break Loop
+		case <-receiveLoopCtx.Done():
+			break Loop
 		}
 	}
+
+	liveSession.Close()
+	wg.Wait()
+	close(s.AudioOut)
 }
 
 func (m *TranslationManager) PushAudio(chunk []float32) {
