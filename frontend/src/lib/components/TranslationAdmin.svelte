@@ -50,7 +50,6 @@
                     : "primary"}
                 class="h-9 px-4 text-xs"
                 onclick={toggleMaster}
-                disabled={!audio.isRecording}
             >
                 {ai.geminiMasterEnabled
                     ? "Disable Gemini"
@@ -58,12 +57,6 @@
             </SimpleButton>
         </div>
     </div>
-
-    {#if !audio.isRecording}
-        <div class="px-3 py-2 rounded bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[10px] font-bold uppercase tracking-widest text-center">
-            ⚠️ Gemini features are only available during active recording
-        </div>
-    {/if}
 
     {#if ai.translations.length === 0}
         <div

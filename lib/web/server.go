@@ -376,15 +376,6 @@ func UpdateAIStreams(state *types.AppState) gin.HandlerFunc {
 			return
 		}
 
-		state.Mu.RLock()
-		isRecording := state.IsRecording
-		state.Mu.RUnlock()
-
-		if !isRecording && (req.Action == "toggle_master" || req.Action == "start_translation") {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "AI features only available while recording"})
-			return
-		}
-
 		state.UpdateState(sessionID, "gemini", func() {
 			if req.Action == "toggle_master" {
 				if req.Enabled != nil {
