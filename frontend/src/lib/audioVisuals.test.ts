@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AudioVisuals } from './audioVisuals.svelte';
+import { UIStore, AudioStore, AIStore, SystemStore } from './audioState.svelte';
 
 // Mock Global dependencies
 global.requestAnimationFrame = vi.fn().mockImplementation((cb) => setTimeout(() => cb(Date.now()), 16));
@@ -25,7 +26,11 @@ describe('AudioVisuals', () => {
 
     beforeEach(() => {
         vi.useFakeTimers();
-        visuals = new AudioVisuals();
+        const ui = new UIStore();
+        const audio = new AudioStore();
+        const ai = new AIStore(ui);
+        const system = new SystemStore(ui, audio, ai);
+        visuals = new AudioVisuals(system);
     });
 
     it('should process audio data and update dB values', async () => {

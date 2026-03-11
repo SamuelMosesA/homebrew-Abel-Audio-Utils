@@ -1,4 +1,4 @@
-import { audioState, type MeterState } from "./audioState.svelte";
+import { type MeterState, SystemStore } from "./audioState.svelte";
 
 export class AudioVisuals {
 
@@ -14,8 +14,8 @@ export class AudioVisuals {
     #LATENCY_BUFFER = 0.1;
     #DECAY = 0.25;
 
-    constructor() {
-        audioState.onMessage = (dv) => this.processData(dv);
+    constructor(system: SystemStore) {
+        system.onMessage = (dv) => this.processData(dv);
         this.runVisualLoop();
     }
 
@@ -123,5 +123,3 @@ export class AudioVisuals {
         requestAnimationFrame(tick);
     }
 }
-
-export const audioVisuals = new AudioVisuals();

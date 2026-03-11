@@ -1,23 +1,19 @@
 <script lang="ts">
-    import { audioState } from "$lib/audioState.svelte";
-    import { audioConfig } from "$lib/audioConfig.svelte";
+    import { getAppContext } from "$lib/audioState.svelte";
+    const { ai, audio } = getAppContext();
     import SimpleCard from "./ui/SimpleCard.svelte";
     import SimpleButton from "./ui/SimpleButton.svelte";
     import { Languages, XCircle, Users } from "lucide-svelte";
-    import { onMount } from "svelte";
 
-    onMount(() => {
-        audioState.syncStatus();
-    });
 
     async function handleStop(lang: string) {
         if (confirm(`Are you sure you want to stop the ${lang} translation?`)) {
-            await audioConfig.stopTranslation(lang);
+            await ai.stopTranslation(lang);
         }
     }
 
     async function toggleMaster() {
-        await audioConfig.setGeminiMaster(!audioState.geminiMasterEnabled);
+        await ai.setGeminiMaster(!ai.geminiMasterEnabled);
     }
 </script>
 
@@ -33,36 +29,43 @@
         </div>
         <div class="flex items-center gap-4">
             <div
-                class="flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all {audioState.geminiMasterEnabled
+                class="flex items-center gap-2 px-3 py-1.5 rounded-lg border {ai.geminiMasterEnabled
                     ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
                     : 'bg-red-500/10 border-red-500/30 text-red-400'}"
             >
                 <span
-                    class="w-1.5 h-1.5 rounded-full {audioState.geminiMasterEnabled
-                        ? 'bg-emerald-500 animate-pulse'
+                    class="w-1.5 h-1.5 rounded-full {ai.geminiMasterEnabled
+                        ? 'bg-emerald-500'
                         : 'bg-red-500'}"
                 ></span>
-                <span class="text-[10px] font-black uppercase tracking-wider"
-                    >Gemini API: {audioState.geminiMasterEnabled
+                <span class="text-xs font-black uppercase tracking-widest"
+                    >Gemini API: {ai.geminiMasterEnabled
                         ? "Active"
                         : "Disabled"}</span
                 >
             </div>
             <SimpleButton
-                variant={audioState.geminiMasterEnabled
+                variant={ai.geminiMasterEnabled
                     ? "destructive"
                     : "primary"}
-                class="h-8 px-4 text-[10px]"
+                class="h-9 px-4 text-xs"
                 onclick={toggleMaster}
+                disabled={!audio.isRecording}
             >
-                {audioState.geminiMasterEnabled
+                {ai.geminiMasterEnabled
                     ? "Disable Gemini"
                     : "Enable Gemini"}
             </SimpleButton>
         </div>
     </div>
 
-    {#if audioState.translations.length === 0}
+    {#if !audio.isRecording}
+        <div class="px-3 py-2 rounded bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[10px] font-bold uppercase tracking-widest text-center">
+            ⚠️ Gemini features are only available during active recording
+        </div>
+    {/if}
+
+    {#if ai.translations.length === 0}
         <div
             class="py-12 flex flex-col items-center justify-center text-muted-foreground space-y-3 opacity-60"
         >
@@ -75,9 +78,9 @@
         </div>
     {:else}
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {#each audioState.translations as session}
+            {#each ai.translations as session}
                 <div
-                    class="flex items-center justify-between p-4 bg-black/40 border border-border/60 rounded-xl hover:border-primary/30 transition-all group"
+                    class="flex items-center justify-between p-5 bg-muted/30 border border-border/40 rounded-xl group"
                 >
                     <div class="flex items-center gap-4">
                         <div
@@ -91,7 +94,7 @@
                                 >{session.language}</span
                             >
                             <div
-                                class="flex items-center gap-1.5 text-[10px] text-muted-foreground font-medium uppercase tracking-wider"
+                                class="flex items-center gap-2 text-xs text-muted-foreground font-medium uppercase tracking-widest"
                             >
                                 <Users class="w-3 h-3" />
                                 <span>External Feed</span>
@@ -107,7 +110,7 @@
 
                     <SimpleButton
                         variant="destructive"
-                        class="px-3 h-9 opacity-0 group-hover:opacity-100 transition-opacity"
+                        class="px-3 h-9"
                         onclick={() => handleStop(session.language)}
                     >
                         <XCircle class="w-4 h-4 mr-1.5" />

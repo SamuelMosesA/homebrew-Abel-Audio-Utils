@@ -1,11 +1,13 @@
 <script lang="ts">
     import "../app.css";
     import { onMount } from "svelte";
-    import { audioState } from "$lib/audioState.svelte";
+    import { AppState, setAppContext } from "$lib/audioState.svelte";
     import { page } from "$app/state";
     import NotificationBanner from "$lib/components/NotificationBanner.svelte";
 
     let { children } = $props();
+    const appState = new AppState();
+    setAppContext(appState);
 
     onMount(() => {
         // Initial setup

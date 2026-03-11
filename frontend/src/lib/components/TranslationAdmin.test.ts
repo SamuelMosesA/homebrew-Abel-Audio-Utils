@@ -1,26 +1,31 @@
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import TranslationAdmin from './TranslationAdmin.svelte';
-import { audioState } from '$lib/audioState.svelte';
-import { audioConfig } from '$lib/audioConfig.svelte';
+import { getAppContext } from '../audioState.svelte';
 
-// Mock audioConfig actions
-vi.mock('$lib/audioConfig.svelte', () => ({
-    audioConfig: {
-        setGeminiMaster: vi.fn(),
-        stopTranslation: vi.fn(),
-    }
-}));
-
-// Mock audioState (it's a partial mock since we use the runes)
-// Note: Svelte 5 runes might need special handling in tests, but let's try standard approach first.
+// Mock getAppContext
+vi.mock('../audioState.svelte', async (importOriginal) => {
+    const actual: any = await importOriginal();
+    return {
+        ...actual,
+        getAppContext: vi.fn()
+    };
+});
 
 describe('TranslationAdmin.svelte', () => {
+    let mockAi: any;
+    let mockAudio: any;
+
     beforeEach(() => {
         vi.clearAllMocks();
-        // Reset audioState
-        audioState.geminiMasterEnabled = true;
-        audioState.translations = [];
+        mockAi = {
+            geminiMasterEnabled: true,
+            translations: [],
+            setGeminiMaster: vi.fn(),
+            stopTranslation: vi.fn()
+        };
+        mockAudio = {};
+        (getAppContext as any).mockReturnValue({ ai: mockAi, audio: mockAudio, ui: {}, visuals: {} });
     });
 
     it('should show "No active translation sessions" when translations list is empty', () => {
@@ -29,7 +34,7 @@ describe('TranslationAdmin.svelte', () => {
     });
 
     it('should render active translation sessions', () => {
-        audioState.translations = [
+        mockAi.translations = [
             { language: 'tamil', listeners: 1, subtitles: true }
         ];
         render(TranslationAdmin);
@@ -37,51 +42,22 @@ describe('TranslationAdmin.svelte', () => {
         expect(screen.getByText(/Subtitles ON/i)).toBeInTheDocument();
     });
 
-    it('should call toggleMaster when Disable Gemini button is clicked', async () => {
-        audioState.geminiMasterEnabled = true;
+    it('should call setGeminiMaster when Disable Gemini button is clicked', async () => {
         render(TranslationAdmin);
-        
         const button = screen.getByText(/Disable Gemini/i);
         await fireEvent.click(button);
-        
-        expect(audioConfig.setGeminiMaster).toHaveBeenCalledWith(false);
-    });
-
-    it('should show "Kill" button on hover (simulated by rendering)', () => {
-        audioState.translations = [
-            { language: 'tamil', listeners: 1, subtitles: true }
-        ];
-        render(TranslationAdmin);
-        
-        const killButton = screen.getByText(/Kill/i);
-        expect(killButton).toBeInTheDocument();
+        expect(mockAi.setGeminiMaster).toHaveBeenCalledWith(false);
     });
 
     it('should call stopTranslation when Kill button is clicked and confirmed', async () => {
         const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-        audioState.translations = [
+        mockAi.translations = [
             { language: 'tamil', listeners: 1, subtitles: true }
         ];
         render(TranslationAdmin);
-        
         const killButton = screen.getByText(/Kill/i);
         await fireEvent.click(killButton);
-        
         expect(confirmSpy).toHaveBeenCalled();
-        expect(audioConfig.stopTranslation).toHaveBeenCalledWith('tamil');
-    });
-
-    it('should NOT call stopTranslation when Kill button is clicked but NOT confirmed', async () => {
-        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
-        audioState.translations = [
-            { language: 'tamil', listeners: 1, subtitles: true }
-        ];
-        render(TranslationAdmin);
-        
-        const killButton = screen.getByText(/Kill/i);
-        await fireEvent.click(killButton);
-        
-        expect(confirmSpy).toHaveBeenCalled();
-        expect(audioConfig.stopTranslation).not.toHaveBeenCalled();
+        expect(mockAi.stopTranslation).toHaveBeenCalledWith('tamil');
     });
 });

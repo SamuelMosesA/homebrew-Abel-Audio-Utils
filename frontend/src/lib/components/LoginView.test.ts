@@ -1,7 +1,16 @@
 import { render, screen, fireEvent } from '@testing-library/svelte';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import LoginView from './LoginView.svelte';
-import { audioState } from '$lib/audioState.svelte';
+import { getAppContext } from '../audioState.svelte';
+
+// Mock getAppContext
+vi.mock('../audioState.svelte', async (importOriginal) => {
+    const actual: any = await importOriginal();
+    return {
+        ...actual,
+        getAppContext: vi.fn()
+    };
+});
 
 // Mock navigation
 vi.mock('$app/navigation', () => ({
@@ -11,9 +20,15 @@ vi.mock('$app/navigation', () => ({
 import { goto } from '$app/navigation';
 
 describe('LoginView.svelte', () => {
+    let mockSystem: any;
+
     beforeEach(() => {
         vi.clearAllMocks();
-        audioState.isAuthenticated = false;
+        mockSystem = {
+            isAuthenticated: false,
+            login: vi.fn()
+        };
+        (getAppContext as any).mockReturnValue({ system: mockSystem });
     });
 
     it('should render login form', () => {
@@ -24,7 +39,7 @@ describe('LoginView.svelte', () => {
     });
 
     it('should handle successful login', async () => {
-        vi.spyOn(audioState, 'login').mockResolvedValue(true);
+        mockSystem.login.mockResolvedValue(true);
         render(LoginView);
         
         const usernameInput = screen.getByLabelText(/Username/i);
@@ -35,12 +50,12 @@ describe('LoginView.svelte', () => {
         await fireEvent.input(passwordInput, { target: { value: 'password' } });
         await fireEvent.click(loginButton);
 
-        expect(audioState.login).toHaveBeenCalledWith('admin', 'password');
+        expect(mockSystem.login).toHaveBeenCalledWith('admin', 'password');
         expect(goto).toHaveBeenCalledWith('/admin');
     });
 
     it('should show error on failed login', async () => {
-        vi.spyOn(audioState, 'login').mockResolvedValue(false);
+        mockSystem.login.mockResolvedValue(false);
         render(LoginView);
         
         const loginButton = screen.getByText(/Unlock Audio Console/i);

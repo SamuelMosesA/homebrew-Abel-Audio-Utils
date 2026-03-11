@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { audioState } from "$lib/audioState.svelte";
+    import { getAppContext } from "$lib/audioState.svelte";
+    const { system } = getAppContext();
     import { goto } from "$app/navigation";
     import { Label } from "$lib/components/ui/label/index.js";
     import { Lock, AlertCircle, ChevronLeft, Loader2, Shield } from "lucide-svelte";
@@ -17,17 +18,17 @@
         isLoading = true;
         error = "";
         
-        const success = await audioState.login(username, password);
+        const success = await system.login(username, password);
         if (success) {
             goto("/admin");
         } else {
-            error = "Invalid administrator credentials";
+            error = "Invalid administrator credentials.";
         }
         isLoading = false;
     };
 </script>
 
-<div class="max-w-lg mx-auto py-32 px-6 space-y-12 animate-in fade-in zoom-in-[0.99] duration-700">
+<div class="max-w-lg mx-auto py-20 px-6 space-y-8 animate-in fade-in">
     <div class="flex items-center justify-between">
         <SimpleButton 
             onclick={() => goto("/")} 
@@ -39,7 +40,7 @@
         </SimpleButton>
     </div>
 
-    <SimpleCard class="space-y-12 py-12 px-10">
+    <SimpleCard class="space-y-8 py-8 px-6">
         <div class="space-y-4">
             <div class="p-3 bg-primary/10 rounded-2xl w-fit">
                 <Shield class="w-10 h-10 text-primary" />
@@ -66,7 +67,7 @@
                         type="text" 
                         bind:value={username} 
                         placeholder="admin"
-                        class="h-14 bg-black text-lg tracking-wide placeholder:text-muted-foreground/20"
+                        class="h-12 bg-muted/50 text-base"
                         onkeydown={(e: KeyboardEvent) => e.key === "Enter" && handleLogin()}
                     />
                 </div>
@@ -78,7 +79,7 @@
                         type="password" 
                         bind:value={password} 
                         placeholder="••••••••"
-                        class="h-14 bg-black text-lg tracking-widest placeholder:text-muted-foreground/20"
+                        class="h-12 bg-muted/50 text-base"
                         onkeydown={(e: KeyboardEvent) => e.key === "Enter" && handleLogin()}
                     />
                 </div>

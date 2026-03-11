@@ -1,3 +1,5 @@
+import { getContext, setContext } from "svelte";
+
 export interface Device {
     id: number;
     name: string;
@@ -30,11 +32,11 @@ export interface AppStatus {
     geminiMasterEnabled: boolean;
 }
 
-class AudioState {
-    // Runes for reactive state
+import { fetchWithSync } from "./utils/api";
+
+export class AudioStore {
     isRunning = $state(false);
     isRecording = $state(false);
-    wsConnected = $state(false);
     devices = $state<Device[]>([]);
     selectedDeviceId = $state(0);
     chL = $state(0);
@@ -42,92 +44,8 @@ class AudioState {
     boost = $state(0);
     storageLocation = $state("");
     cloudDriveLocation = $state("");
-    translations = $state<TranslationSession[]>([]);
-    serverUrl = $state("");
-    ssid = $state("");
-    geminiMasterEnabled = $state(true);
 
-    // Auth and Routing state
-    isAuthenticated = $state(false);
-    wasKicked = $state(false);
-    currentView = $state<"landing" | "stream" | "admin">("landing");
-    sessionId: string = "";
-    
-    // Notification state
-    notification = $state<{ message: string, section: string } | null>(null);
-    #notificationTimeout: any = null;
-
-    #ws: WebSocket | null = null;
-    #sse: EventSource | null = null;
-    onMessage: ((dv: DataView) => void) | null = null;
-
-    constructor() {
-        this.sessionId = localStorage.getItem("session_id") || "";
-        this.isAuthenticated = !!this.sessionId;
-        if (typeof window !== 'undefined' && window.location.protocol.startsWith('http')) {
-            this.fetchDevices();
-        }
-        
-        if (this.isAuthenticated && typeof window !== 'undefined' && window.location.protocol.startsWith('http')) {
-            this.setupSSE();
-            this.syncConnection();
-        }
-    }
-
-
-    setupSSE() {
-        if (this.#sse) this.#sse.close();
-        
-        console.log("[SSE] Connecting to changelog...");
-        // Use credentials for cross-origin if needed, but here mostly for session cookie
-        this.#sse = new EventSource("/api/system/changelog", { withCredentials: true });
-        
-        this.#sse.onmessage = (event) => {
-            try {
-                const change = JSON.parse(event.data);
-                if (change.sessionId !== this.sessionId) {
-                    this.handleRemoteUpdate(change);
-                }
-            } catch (e) {
-                console.error("[SSE] Error parsing change:", e);
-            }
-        };
-
-        this.#sse.onerror = (e) => {
-            console.error("[SSE] Error:", e);
-            setTimeout(() => this.setupSSE(), 5000);
-        };
-    }
-
-    handleRemoteUpdate(change: { section: string, sessionId: string }) {
-        console.log(`[SSE] Remote update from ${change.sessionId} on ${change.section}`);
-        
-        // Modular update logic based on section
-        const sections: Record<string, () => void> = {
-            "interface": () => this.syncSettings(),
-            "recording": () => this.syncSettings(),
-            "gemini": () => this.syncGemini(),
-        };
-
-        if (sections[change.section]) {
-            sections[change.section]();
-        } else {
-            this.syncSettings(); // Consolidated sync
-        }
-
-        // Show banner
-        this.showNotification(`Session ${change.sessionId.slice(0, 4)} updated ${change.section}`, change.section);
-    }
-
-    showNotification(message: string, section: string) {
-        if (this.#notificationTimeout) clearTimeout(this.#notificationTimeout);
-        this.notification = { message, section };
-        this.#notificationTimeout = setTimeout(() => {
-            this.notification = null;
-        }, 5000);
-    }
-
-    async syncSettings() {
+    async sync() {
         try {
             const res = await fetch("/api/audio/config", { credentials: "include" });
             if (res.ok) {
@@ -142,11 +60,51 @@ class AudioState {
                 this.cloudDriveLocation = settings.cloudDriveLocation;
             }
         } catch (e) {
-            console.error("Error syncing settings", e);
+            console.error("Error syncing audio settings", e);
         }
     }
 
-    async syncGemini() {
+    async fetchDevices() {
+        try {
+            const res = await fetch("/api/audio/devices", { credentials: "include" });
+            this.devices = await res.json();
+        } catch (e) {
+            console.error("Error loading devices", e);
+        }
+    }
+
+    async commitConfig(id: number | null) {
+        const payload: any = {
+            chL: this.chL,
+            chR: this.chR,
+            boost: this.boost
+        };
+        if (id !== null) payload.deviceID = id;
+
+        await fetchWithSync("/api/audio/config", {
+            method: "PATCH",
+            body: JSON.stringify(payload)
+        });
+        await this.sync();
+    }
+
+    async toggleRecording() {
+        const action = this.isRecording ? "stop" : "start";
+        await fetchWithSync("/api/recordings", {
+            method: "POST",
+            body: JSON.stringify({ action })
+        });
+        await this.sync();
+    }
+}
+
+export class AIStore {
+    geminiMasterEnabled = $state(true);
+    translations = $state<TranslationSession[]>([]);
+
+    constructor(private ui: UIStore) {}
+
+    async sync() {
         try {
             const res = await fetch("/api/ai/streams", { credentials: "include" });
             if (res.ok) {
@@ -156,6 +114,56 @@ class AudioState {
             }
         } catch (e) {
             console.error("Error syncing Gemini status", e);
+        }
+    }
+
+    async stopTranslation(language: string) {
+        const res = await fetchWithSync("/api/ai/streams", {
+            method: "POST",
+            body: JSON.stringify({ action: "stop_translation", language, subtitles: true })
+        });
+        
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            this.ui.showNotification(data.error || "Failed to stop translation", "error");
+        }
+        await this.sync();
+    }
+
+    async setGeminiMaster(enabled: boolean) {
+        const res = await fetchWithSync("/api/ai/streams", {
+            method: "POST",
+            body: JSON.stringify({ action: "toggle_master", enabled: enabled })
+        });
+        
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            this.ui.showNotification(data.error || "Failed to toggle Gemini", "error");
+        }
+        await this.sync();
+    }
+}
+
+export class SystemStore {
+    wsConnected = $state(false);
+    serverUrl = $state("");
+    ssid = $state("");
+    isAuthenticated = $state(false);
+    sessionId = $state("");
+
+    #ws: WebSocket | null = null;
+    #sse: EventSource | null = null;
+    onMessage: ((dv: DataView) => void) | null = null;
+
+    constructor(private ui: UIStore, private audio: AudioStore, private ai: AIStore) {
+        if (typeof window !== 'undefined') {
+            this.sessionId = localStorage.getItem("session_id") || "";
+            this.isAuthenticated = !!this.sessionId;
+            
+            if (this.isAuthenticated && window.location.protocol.startsWith('http')) {
+                this.setupSSE();
+                this.syncConnection();
+            }
         }
     }
 
@@ -172,85 +180,60 @@ class AudioState {
         }
     }
 
-    getHeaders() {
-        const headers: Record<string, string> = {};
-        return headers;
+    setupSSE() {
+        if (this.#sse) this.#sse.close();
+        this.#sse = new EventSource("/api/system/changelog", { withCredentials: true });
+        
+        this.#sse.onmessage = (event) => {
+            try {
+                const change = JSON.parse(event.data);
+                if (change.sessionId !== this.sessionId) {
+                    this.handleRemoteUpdate(change);
+                }
+            } catch (e) {
+                console.error("[SSE] Error parsing change:", e);
+            }
+        };
+
+        this.#sse.onerror = () => {
+            setTimeout(() => this.setupSSE(), 5000);
+        };
     }
 
-    async fetchDevices() {
-        try {
-            const res = await fetch("/api/audio/devices", { credentials: "include" });
-            this.devices = await res.json();
-        } catch (e) {
-            console.error("Error loading devices", e);
-        }
-    }
-
-    async syncStatus() {
-        // Monolithic sync deprecated, but kept as a wrapper for now to avoid breaking calls
-        await Promise.all([this.syncSettings(), this.syncGemini()]);
+    private handleRemoteUpdate(change: { section: string, sessionId: string }) {
+        if (change.section === "gemini") this.ai.sync();
+        else if (change.section === "interface" || change.section === "recording") this.audio.sync();
+        else this.audio.sync();
+        
+        this.ui.showNotification(`Session ${change.sessionId.slice(0, 4)} updated ${change.section}`, change.section);
     }
 
     connectWebSocket() {
-        console.log("Attempting WebSocket connection...");
-        if (this.#ws && (this.#ws.readyState === WebSocket.OPEN || this.#ws.readyState === WebSocket.CONNECTING)) {
-            console.log("WebSocket already open or connecting, skipping.");
-            return;
-        }
+        if (this.#ws && (this.#ws.readyState === WebSocket.OPEN || this.#ws.readyState === WebSocket.CONNECTING)) return;
         
-        this.wasKicked = false;
-
+        this.ui.wasKicked = false;
         const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
         let url = `${protocol}${window.location.host}/ws`;
         
         const pass = localStorage.getItem("admin_password");
-        if (pass) {
-            url += `?pass=${pass}&session=${this.sessionId}`;
-        } else {
-            console.warn("WebSocket attempted aborted: no admin password in storage");
-            return;
-        }
-
-        console.log("Opening new WebSocket to:", url.split('?')[0]); // Hide pass in log
+        if (!pass) return;
+        
+        url += `?pass=${pass}&session=${this.sessionId}`;
         this.#ws = new WebSocket(url);
         this.#ws.binaryType = "arraybuffer";
 
-        this.#ws.onopen = () => {
-            console.log(`WebSocket connected successfully`);
-            this.wsConnected = true;
-        };
-
+        this.#ws.onopen = () => this.wsConnected = true;
         this.#ws.onmessage = (event: MessageEvent) => {
-            if (event.data instanceof ArrayBuffer) {
-                if (this.onMessage) {
-                    const dv = new DataView(event.data);
-                    this.onMessage(dv);
-                }
-            } else {
-                try {
-                    const msg = JSON.parse(event.data);
-                    // Legacy message handling if any
-                } catch (e) {
-                    // Ignore
-                }
+            if (event.data instanceof ArrayBuffer && this.onMessage) {
+                this.onMessage(new DataView(event.data));
             }
         };
 
-        this.#ws.onclose = (event) => {
-            console.log(`WebSocket closed (Code: ${event.code}, Reason: ${event.reason})`);
+        this.#ws.onclose = () => {
             this.wsConnected = false;
-            // Only retry if we're still in admin view and NOT kicked
-            if (this.currentView === "admin" && this.isAuthenticated && !this.wasKicked) {
-                console.log("Auto-reconnecting in 2s...");
+            if (this.ui.currentView === "admin" && this.isAuthenticated && !this.ui.wasKicked) {
                 setTimeout(() => this.connectWebSocket(), 2000);
-            } else {
-                console.log("Not reconnecting: view=" + this.currentView + ", auth=" + this.isAuthenticated + ", kicked=" + this.wasKicked);
             }
-        };
-
-        this.#ws.onerror = (e) => {
-            console.error("WebSocket error:", e);
-            this.wsConnected = false;
         };
     }
 
@@ -272,12 +255,9 @@ class AudioState {
                     localStorage.setItem("session_id", data.session);
                 }
                 this.isAuthenticated = true;
-                this.setupSSE(); // Re-establish SSE after login
-                this.syncConnection(); // Fetch connection info once
+                this.setupSSE();
+                this.syncConnection();
                 return true;
-            } else if (res.status === 403 || res.status === 401) {
-                alert("Invalid username or password.");
-                return false;
             }
             return false;
         } catch (e) {
@@ -292,16 +272,99 @@ class AudioState {
         localStorage.removeItem("session_id");
         this.isAuthenticated = false;
         this.sessionId = "";
-        this.currentView = "landing";
-        if (this.#ws) {
-            this.#ws.close();
-            this.#ws = null;
+        this.ui.currentView = "landing";
+        if (this.#ws) { this.#ws.close(); this.#ws = null; }
+        if (this.#sse) { this.#sse.close(); this.#sse = null; }
+    }
+}
+
+export class UIStore {
+    currentView = $state<"landing" | "stream" | "admin">("landing");
+    notification = $state<{ message: string, section: string } | null>(null);
+    wasKicked = $state(false);
+    #notificationTimeout: any = null;
+
+    showNotification(message: string, section: string) {
+        if (this.#notificationTimeout) clearTimeout(this.#notificationTimeout);
+        this.notification = { message, section };
+        this.#notificationTimeout = setTimeout(() => {
+            this.notification = null;
+        }, 5000);
+    }
+}
+
+import { AudioVisuals } from "./audioVisuals.svelte";
+
+export interface RecordedFile {
+    name: string;
+    size: number;
+    modTime: string;
+}
+
+export class FileStore {
+    recordedFiles = $state<RecordedFile[]>([]);
+
+    constructor() {
+        if (typeof window !== 'undefined' && window.location.protocol.startsWith('http')) {
+            this.fetchFiles();
+            setInterval(() => this.fetchFiles(), 10000);
         }
-        if (this.#sse) {
-            this.#sse.close();
-            this.#sse = null;
+    }
+
+    async fetchFiles() {
+        try {
+            const res = await fetch("/api/recordings/files", { credentials: "include" });
+            if (res.ok) {
+                const files = await res.json();
+                files.sort((a: RecordedFile, b: RecordedFile) => new Date(b.modTime).getTime() - new Date(a.modTime).getTime());
+                this.recordedFiles = files;
+            }
+        } catch (e) {
+            console.error("Error fetching files", e);
+        }
+    }
+
+    async pushToCloud(source: string, target: string) {
+        try {
+            const res = await fetch("/api/recordings/push", {
+                method: "POST",
+                body: JSON.stringify({ source, target }),
+                credentials: "include"
+            });
+            if (res.ok) return { success: true };
+            return { success: false, error: await res.text() };
+        } catch (e) {
+            return { success: false, error: String(e) };
         }
     }
 }
 
-export const audioState = new AudioState();
+export class AppState {
+    ui = new UIStore();
+    ai = new AIStore(this.ui);
+    audio = new AudioStore();
+    files = new FileStore();
+    system: SystemStore;
+    visuals: AudioVisuals;
+
+    constructor() {
+        this.system = new SystemStore(this.ui, this.audio, this.ai);
+        this.visuals = new AudioVisuals(this.system);
+        
+        if (typeof window !== 'undefined' && window.location.protocol.startsWith('http')) {
+            this.audio.fetchDevices();
+            this.audio.sync();
+            this.ai.sync();
+        }
+    }
+}
+
+const APP_STATE_KEY = Symbol("APP_STATE");
+
+export function setAppContext(state: AppState) {
+    return setContext(APP_STATE_KEY, state);
+}
+
+export function getAppContext() {
+    return getContext<AppState>(APP_STATE_KEY);
+}
