@@ -11,7 +11,6 @@ import (
 )
 
 func StartAudioEngine(state *types.AppState, cfg *config.Config, deviceID int, recordChan chan<- []float32, playbackChan chan<- []float32) error {
-	state.Mu.Lock()
 	if q := state.QuitAudio; q != nil {
 		close(q)
 		state.QuitAudio = nil
@@ -19,8 +18,7 @@ func StartAudioEngine(state *types.AppState, cfg *config.Config, deviceID int, r
 	}
 	quit := make(chan bool)
 	state.QuitAudio = quit
-	state.IsRunning.Store(true)
-	state.Mu.Unlock()
+	state.IsRunning = true
 
 	devices := state.Devices
 
@@ -33,7 +31,7 @@ func StartAudioEngine(state *types.AppState, cfg *config.Config, deviceID int, r
 	go func() {
 		log.Printf("[AUDIO] Started: %s", dev.Name)
 		defer log.Println("[AUDIO] Stopped")
-		defer state.IsRunning.Store(false)
+		defer func() { state.IsRunning = false }()
 		defer func() {
 			if state.Translator != nil {
 				state.Translator.CloseAll()
@@ -85,8 +83,8 @@ func StartAudioEngine(state *types.AppState, cfg *config.Config, deviceID int, r
 				continue
 			}
 
-			chL := int(state.ChLeft.Load())
-			chR := int(state.ChRight.Load())
+			chL := int(state.ChLeft)
+			chR := int(state.ChRight)
 			boost := float32(state.GetBoost())
 			if boost == 0 {
 				boost = 1.0

@@ -32,11 +32,10 @@ import (
 func StartStorageWorker(state *types.AppState, recordChan <-chan []float32) {
 	go func() {
 		for chunk := range recordChan {
-			if !state.IsRecording.Load() {
+			if !state.IsRecording {
 				continue
 			}
 
-			state.Mu.Lock()
 			file := state.File
 			if file != nil {
 				// Process pairs of float32 samples (stereo)
@@ -49,9 +48,8 @@ func StartStorageWorker(state *types.AppState, recordChan <-chan []float32) {
 					binary.Write(file, binary.LittleEndian, iR)
 				}
 				// Track number of stereo sample pairs written
-				state.SamplesWrote.Add(int64(len(chunk) / 2))
+				state.SamplesWrote += int64(len(chunk) / 2)
 			}
-			state.Mu.Unlock()
 		}
 	}()
 }

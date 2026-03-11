@@ -24,45 +24,40 @@
     import { onMount } from "svelte";
 
     let selectedDeviceValue = $state<string | undefined>(undefined);
-    let isSyncing = false;
+    let isDirty = $state(false);
 
     onMount(() => {
         audioState.currentView = "admin";
         if (audioState.selectedDeviceId >= 0) {
-            isSyncing = true;
             selectedDeviceValue = audioState.selectedDeviceId.toString();
         }
         audioState.connectWebSocket();
     });
 
-    // Sync external state updates into the local dropdown value
+    // Update local selection only when server state changes and user hasn't touched the dropdown
     $effect(() => {
-        if (audioState.selectedDeviceId >= 0 && selectedDeviceValue !== audioState.selectedDeviceId.toString()) {
-            isSyncing = true;
-            selectedDeviceValue = audioState.selectedDeviceId.toString();
+        const serverId = audioState.selectedDeviceId.toString();
+        if (!isDirty && selectedDeviceValue !== serverId) {
+            selectedDeviceValue = serverId;
         }
     });
 
-    // Send selection to server ONLY when user manually changes the local dropdown
-    $effect(() => {
-        if (!selectedDeviceValue) return;
-        if (isSyncing) {
-            isSyncing = false;
-            return;
-        }
-        const id = Number(selectedDeviceValue);
-        if (id !== audioState.selectedDeviceId) {
-            audioConfig.connectDevice(id);
-        }
-    });
+    const handleDeviceChange = (val: string) => {
+        selectedDeviceValue = val;
+        isDirty = true;
+    };
+
+    // Remove auto-sync effect for selectedDeviceValue and DeviceID
 
     const handleLogout = () => {
         audioState.logout();
         goto("/");
     };
 
-    const handleApplySettings = () => {
-        audioConfig.updateConfig();
+    const handleApplySettings = async () => {
+        const id = selectedDeviceValue ? Number(selectedDeviceValue) : null;
+        await audioConfig.commitConfig(id);
+        isDirty = false;
     };
 </script>
 
@@ -129,14 +124,15 @@
     </header>
 
     <div class="space-y-6 md:space-y-10">
-        <!-- Audio Interface -->
+        <!-- Combined Engine Parameters -->
         <SimpleCard class="space-y-6 md:space-y-8 text-white">
             <div class="flex items-center gap-3 text-muted-foreground">
-                <Radio class="w-4 h-4 text-primary" />
+                <Settings class="w-4 h-4 text-primary" />
                 <span class="text-xs font-black uppercase tracking-widest"
-                    >Interface Configuration</span
+                    >Input Audio Config</span
                 >
             </div>
+            
             <div class="space-y-3">
                 <Label
                     for="device"
@@ -145,7 +141,8 @@
                 >
                 <Select.Root
                     type="single"
-                    bind:value={selectedDeviceValue}
+                    value={selectedDeviceValue}
+                    onValueChange={handleDeviceChange}
                     disabled={audioState.isRecording}
                 >
                     <Select.Trigger
@@ -153,7 +150,7 @@
                     >
                         {audioState.devices.find(
                             (d) => d.id === Number(selectedDeviceValue),
-                        )?.name ?? "Detecting interface..."}
+                        )?.name ?? "Select interface..."}
                     </Select.Trigger>
                     <Select.Content class="bg-card border-border shadow-2xl">
                         {#each audioState.devices as device}
@@ -168,16 +165,7 @@
                     </Select.Content>
                 </Select.Root>
             </div>
-        </SimpleCard>
 
-        <!-- Routing -->
-        <SimpleCard class="space-y-6 md:space-y-8 text-white">
-            <div class="flex items-center gap-3 text-muted-foreground">
-                <Settings class="w-4 h-4 text-primary" />
-                <span class="text-xs font-black uppercase tracking-widest"
-                    >Engine Parameters</span
-                >
-            </div>
             <div class="grid grid-cols-2 gap-4 md:gap-6">
                 <div class="space-y-3">
                     <Label
@@ -217,14 +205,17 @@
                         class="font-mono text-lg flex-1"
                         disabled={audioState.isRecording}
                     />
-                    <SimpleButton
-                        onclick={handleApplySettings}
-                        disabled={audioState.isRecording}
-                        class="w-full sm:w-auto px-10"
-                    >
-                        Commit
-                    </SimpleButton>
                 </div>
+            </div>
+
+            <div class="pt-4 flex justify-end">
+                <SimpleButton
+                    onclick={handleApplySettings}
+                    disabled={audioState.isRecording}
+                    class="w-full sm:w-auto px-10"
+                >
+                    Commit Configuration
+                </SimpleButton>
             </div>
         </SimpleCard>
 

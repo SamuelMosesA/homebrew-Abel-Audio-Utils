@@ -2,35 +2,33 @@ import { audioState } from "./audioState.svelte";
 import { fetchWithSync } from "./utils/api";
 
 class AudioConfig {
-    async connectDevice(id: number) {
-        await fetchWithSync("/api/control", {
-            method: "POST",
-            body: JSON.stringify({ action: "connect", DeviceID: id })
+    async commitConfig(id: number | null) {
+        const payload: any = {
+            chL: parseInt(audioState.chL.toString()),
+            chR: parseInt(audioState.chR.toString()),
+            boost: parseFloat(audioState.boost.toString())
+        };
+        if (id !== null) {
+            payload.deviceID = id;
+        }
+
+        await fetchWithSync("/api/audio/config", {
+            method: "PATCH",
+            body: JSON.stringify(payload)
         });
     }
 
     async toggleRecording() {
         const action = audioState.isRecording ? "stop" : "start";
-        await fetchWithSync("/api/control", {
+        await fetchWithSync("/api/recordings", {
             method: "POST",
-            body: JSON.stringify({ action })
+            body: JSON.stringify({ action: action })
         });
     }
 
-    async updateConfig() {
-        await fetchWithSync("/api/control", {
-            method: "POST",
-            body: JSON.stringify({
-                action: "update",
-                chL: parseInt(audioState.chL.toString()),
-                chR: parseInt(audioState.chR.toString()),
-                Boost: parseFloat(audioState.boost.toString())
-            })
-        });
-    }
 
     async stopTranslation(language: string) {
-        await fetchWithSync("/api/control", {
+        await fetchWithSync("/api/ai/streams", {
             method: "POST",
             body: JSON.stringify({ action: "stop_translation", language, subtitles: true })
         });
@@ -38,9 +36,9 @@ class AudioConfig {
     }
 
     async setGeminiMaster(enabled: boolean) {
-        await fetchWithSync("/api/control", {
+        await fetchWithSync("/api/ai/streams", {
             method: "POST",
-            body: JSON.stringify({ action: "gemini_master", Enabled: enabled })
+            body: JSON.stringify({ action: "toggle_master", Enabled: enabled })
         });
         await audioState.syncStatus();
     }

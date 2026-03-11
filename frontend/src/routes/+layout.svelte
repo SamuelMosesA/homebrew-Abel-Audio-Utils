@@ -3,6 +3,7 @@
     import { onMount } from "svelte";
     import { audioState } from "$lib/audioState.svelte";
     import { page } from "$app/state";
+    import NotificationBanner from "$lib/components/NotificationBanner.svelte";
 
     let { children } = $props();
 
@@ -10,6 +11,8 @@
         // Initial setup
     });
 </script>
+
+<NotificationBanner />
 
 <main class="min-h-screen bg-background text-foreground selection:bg-primary/30 selection:text-primary-foreground font-sans antialiased overflow-x-hidden">
     <!-- Ambient Background Elements -->

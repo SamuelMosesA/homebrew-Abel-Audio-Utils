@@ -7,20 +7,21 @@
     import SimpleButton from "./ui/SimpleButton.svelte";
     import SimpleInput from "./ui/SimpleInput.svelte";
 
+    let username = $state("");
     let password = $state("");
     let error = $state("");
     let isLoading = $state(false);
 
     const handleLogin = async () => {
-        if (!password) return;
+        if (!username || !password) return;
         isLoading = true;
         error = "";
         
-        const success = await audioState.login(password);
+        const success = await audioState.login(username, password);
         if (success) {
             goto("/admin");
         } else {
-            error = "Invalid administrator password";
+            error = "Invalid administrator credentials";
         }
         isLoading = false;
     };
@@ -50,24 +51,37 @@
         </div>
 
         <div class="space-y-8">
-            {#if audioState.wasKicked || error}
+            {#if error}
                 <div class="flex items-center gap-2 p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm font-medium animate-in slide-in-from-top-2">
                     <AlertCircle class="w-4 h-4 shrink-0" />
-                    {audioState.wasKicked ? "Session ended by another administrator." : error}
+                    {error}
                 </div>
             {/if}
 
-            <div class="space-y-3">
-                <Label for="password" class="text-xs font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">System Access Key</Label>
-                <SimpleInput 
-                    id="password" 
-                    type="password" 
-                    bind:value={password} 
-                    oninput={() => audioState.wasKicked = false}
-                    placeholder="••••••••"
-                    class="h-14 bg-black text-lg tracking-widest placeholder:text-muted-foreground/20"
-                    onkeydown={(e: KeyboardEvent) => e.key === "Enter" && handleLogin()}
-                />
+            <div class="space-y-6">
+                <div class="space-y-3">
+                    <Label for="username" class="text-xs font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Username</Label>
+                    <SimpleInput 
+                        id="username" 
+                        type="text" 
+                        bind:value={username} 
+                        placeholder="admin"
+                        class="h-14 bg-black text-lg tracking-wide placeholder:text-muted-foreground/20"
+                        onkeydown={(e: KeyboardEvent) => e.key === "Enter" && handleLogin()}
+                    />
+                </div>
+
+                <div class="space-y-3">
+                    <Label for="password" class="text-xs font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">Access Key</Label>
+                    <SimpleInput 
+                        id="password" 
+                        type="password" 
+                        bind:value={password} 
+                        placeholder="••••••••"
+                        class="h-14 bg-black text-lg tracking-widest placeholder:text-muted-foreground/20"
+                        onkeydown={(e: KeyboardEvent) => e.key === "Enter" && handleLogin()}
+                    />
+                </div>
             </div>
 
             <SimpleButton 

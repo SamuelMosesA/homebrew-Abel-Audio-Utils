@@ -11,11 +11,20 @@ class FileState {
 
     constructor() {
         this.fetchFiles();
+        this.startLoopSync();
+    }
+
+    #loopInterval: any = null;
+    startLoopSync() {
+        if (this.#loopInterval) clearInterval(this.#loopInterval);
+        this.#loopInterval = setInterval(() => {
+            this.fetchFiles();
+        }, 10000); // 10s is plenty for file list refresh
     }
 
     async fetchFiles() {
         try {
-            const res = await fetch("/api/files");
+            const res = await fetch("/api/recordings/files", { credentials: "include" });
             if (res.ok) {
                 this.recordedFiles = await res.json();
                 // Sort by modTime descending (newest first)
@@ -28,9 +37,10 @@ class FileState {
 
     async pushToCloud(source: string, target: string) {
         try {
-            const res = await fetch("/api/push", {
+            const res = await fetch("/api/recordings/push", {
                 method: "POST",
-                body: JSON.stringify({ source, target })
+                body: JSON.stringify({ source, target }),
+                credentials: "include"
             });
             if (res.ok) {
                 return { success: true };

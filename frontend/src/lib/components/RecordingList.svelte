@@ -84,7 +84,7 @@
                     <div class="flex flex-col sm:flex-row items-center gap-4 md:gap-6 w-full xl:w-auto">
                         <audio 
                             controls 
-                            src="/api/recordings/{file.name}" 
+                            src="/api/recordings/raw/{file.name}" 
                             class="h-10 w-full sm:w-[300px] xl:w-[400px] brightness-90 contrast-125"
                         ></audio>
                         <SimpleButton 

@@ -11,7 +11,7 @@
     let selectedLang = $state("default");
     let showSubtitles = $state(false);
     let subtitleState = $state({ tokenList: [] as {id: string, text: string}[] });
-    let audioSource = $derived(`/api/stream/${selectedLang}`);
+    let audioSource = $derived(`/api/audio/stream/${selectedLang}`);
     
     let eventSource: EventSource | null = null;
     let scrollContainerRef = $state<HTMLElement | null>(null);
@@ -37,12 +37,7 @@
         audioState.currentView = "stream";
         audioState.syncStatus();
         
-        const interval = setInterval(() => {
-            audioState.syncStatus();
-        }, 5000);
-        
         return () => {
-            clearInterval(interval);
             if (eventSource) eventSource.close();
         };
     });
@@ -54,7 +49,7 @@
         }
         
         if (showSubtitles && audioState.geminiMasterEnabled) {
-            eventSource = new EventSource(`/api/subtitles?lang=${selectedLang}`);
+            eventSource = new EventSource(`/api/ai/subtitles?lang=${selectedLang}`);
             eventSource.onmessage = async (e) => {
                 try {
                     const data = JSON.parse(e.data);
