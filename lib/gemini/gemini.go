@@ -22,8 +22,31 @@ type TranslationSession struct {
 	cancel    context.CancelFunc
 }
 
+
+type GeminiClient interface {
+	Connect(ctx context.Context, model string, config *genai.LiveConnectConfig) (GeminiSession, error)
+}
+
+type GeminiSession interface {
+	SendRealtimeInput(input genai.LiveRealtimeInput) error
+	Receive() (*genai.LiveServerMessage, error)
+	Close() error
+}
+
+type RealGeminiClient struct {
+	client *genai.Client
+}
+
+func (c *RealGeminiClient) Connect(ctx context.Context, model string, config *genai.LiveConnectConfig) (GeminiSession, error) {
+	session, err := c.client.Live.Connect(ctx, model, config)
+	if err != nil {
+		return nil, err
+	}
+	return session, nil
+}
+
 type TranslationManager struct {
-	client  *genai.Client
+	client  GeminiClient
 	model   string
 	Enabled atomic.Bool
 
@@ -31,6 +54,7 @@ type TranslationManager struct {
 	subscribers sync.Map // map[string][]chan string
 	mu          sync.Mutex
 }
+
 
 func NewTranslationManager(apiKey, model string) (*TranslationManager, error) {
 	if apiKey == "" {
@@ -49,10 +73,12 @@ func NewTranslationManager(apiKey, model string) (*TranslationManager, error) {
 	}
 
 	return &TranslationManager{
-		client: client,
+		client: &RealGeminiClient{client: client},
 		model:  model,
 	}, nil
 }
+
+
 
 func (m *TranslationManager) GetChannel(language string) chan []float32 {
 	return m.GetChannels(language, false)
@@ -236,7 +262,7 @@ Rules:
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	liveSession, err := m.client.Live.Connect(ctx, m.model, config)
+	liveSession, err := m.client.Connect(ctx, m.model, config)
 	if err != nil {
 		log.Printf("[GEMINI] Failed to connect live session for %s: %v", s.Language, err)
 		return

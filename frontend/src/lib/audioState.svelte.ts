@@ -64,9 +64,11 @@ class AudioState {
     constructor() {
         this.sessionId = localStorage.getItem("session_id") || "";
         this.isAuthenticated = !!this.sessionId;
-        this.fetchDevices();
+        if (typeof window !== 'undefined' && window.location.protocol.startsWith('http')) {
+            this.fetchDevices();
+        }
         
-        if (this.isAuthenticated) {
+        if (this.isAuthenticated && typeof window !== 'undefined' && window.location.protocol.startsWith('http')) {
             this.setupSSE();
             this.syncConnection();
         }

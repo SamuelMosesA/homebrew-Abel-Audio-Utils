@@ -177,7 +177,7 @@ func UpdateAudioConfig(state *types.AppState, cfg *config.Config) gin.HandlerFun
 
 		state.UpdateState(sessionID, "interface", func() {
 			if req.DeviceID != nil {
-				err := portaudio.StartAudioEngine(state, cfg, *req.DeviceID, state.RecordChan, state.PlaybackChan)
+				err := portaudio.StartAudioEngine(nil, state, cfg, *req.DeviceID, state.RecordChan, state.PlaybackChan)
 				if err != nil {
 					// Note: we can't easily return early from the closure with an error to Gin
 					// but we can log it. For now, we'll keep it simple.

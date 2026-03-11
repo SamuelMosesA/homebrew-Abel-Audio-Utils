@@ -21,7 +21,8 @@ build-backend:
 
 clean:
 	@echo "Cleaning..."
-	rm -rf $(BINARY_NAME) $(STATIC_DIR)/* $(FRONTEND_DIR)/dist $(FRONTEND_DIR)/node_modules
+	rm -rf $(BINARY_NAME) $(STATIC_DIR)/* $(FRONTEND_DIR)/dist $(FRONTEND_DIR)/node_modules coverage.out $(FRONTEND_DIR)/coverage
+
 
 run:
 	./$(BINARY_NAME)

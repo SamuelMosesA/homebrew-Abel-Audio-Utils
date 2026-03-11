@@ -1,6 +1,7 @@
 import { audioState, type MeterState } from "./audioState.svelte";
 
-class AudioVisuals {
+export class AudioVisuals {
+
     currentMeters = $state<MeterState>({ L: 0, R: 0 });
     monitoring = $state(false);
     // Smoothed numeric dB values for display (dBFS, negative numbers where 0 = full scale)
