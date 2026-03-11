@@ -8,7 +8,7 @@
     "types": [
       "svelte",
       "vite/client",
-      "@testing-library/jest-dom",
+      "@testing-library/jest-dom/vitest",
       "@testing-library/svelte",
       "vitest/globals"
     ],

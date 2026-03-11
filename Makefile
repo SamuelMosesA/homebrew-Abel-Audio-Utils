@@ -1,4 +1,4 @@
-.PHONY: build-frontend build-backend build clean run
+.PHONY: build-frontend build-backend build clean run test test-backend test-frontend
 
 BINARY_NAME=behringer-recorder
 FRONTEND_DIR=frontend
@@ -26,3 +26,15 @@ clean:
 
 run:
 	./$(BINARY_NAME)
+
+test: test-backend test-frontend
+
+test-backend:
+	@echo "Running backend tests..."
+	go test ./...
+
+test-frontend:
+	@echo "Running frontend unit tests..."
+	cd $(FRONTEND_DIR) && npm run test:unit
+	@echo "Running frontend E2E tests..."
+	cd $(FRONTEND_DIR) && npx playwright test --project=chromium

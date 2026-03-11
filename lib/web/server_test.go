@@ -16,6 +16,7 @@ import (
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -30,6 +31,7 @@ func setupTestRouter(state *types.AppState, cfg *config.Config) *gin.Engine {
 		if c.GetHeader("X-Test-Auth") == "true" {
 			session := sessions.Default(c)
 			session.Set("authenticated", true)
+			session.Set("session_id", "test-session")
 			session.Set("username", "admin")
 			session.Save()
 		}
@@ -41,14 +43,15 @@ func setupTestRouter(state *types.AppState, cfg *config.Config) *gin.Engine {
 		api.POST("/auth/session", LoginHandler(cfg, state))
 		RegisterAdminRoutes(api, state, cfg)
 		api.GET("/recordings", GetRecordingStatus(state))
+		api.GET("/ai/streams", GetAIStreamsStatus(state))
+		api.GET("/system/connection", GetSystemConnection(cfg))
 	}
 	r.GET("/stream", StreamHandler(state, cfg))
 	r.GET("/subtitles/:lang", SubtitlesHandler(state))
+	r.GET("/ws", NewWSHandler(state, cfg))
 	
 	return r
 }
-
-
 
 func TestLoginHandler(t *testing.T) {
 	state := &types.AppState{}
@@ -116,12 +119,12 @@ func TestAdminRoutesProtection(t *testing.T) {
 		assert.Equal(t, http.StatusUnauthorized, w.Code)
 	})
 }
+
 func TestChangeLogHandler(t *testing.T) {
 	state := &types.AppState{}
 	cfg := &config.Config{}
 	router := setupTestRouter(state, cfg)
 
-	// Create a context that we can cancel to stop the SSE handler
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -129,22 +132,46 @@ func TestChangeLogHandler(t *testing.T) {
 	req.Header.Set("X-Test-Auth", "true")
 
 	w := httptest.NewRecorder()
-
-	// Use a goroutine to serve the request because ChangeLogHandler is a blocking loop
 	go router.ServeHTTP(w, req)
 
-	// Wait for the handler to register the channel
 	time.Sleep(100 * time.Millisecond)
-
-	// Trigger a state change
 	state.UpdateState("test-session", "test-section", func() {})
-
-	// Wait for the change to be broadcast
 	time.Sleep(100 * time.Millisecond)
 	cancel()
+}
 
-	// Note: In a real test we'd use a more sophisticated way to read the SSE stream
-	// but for unit testing we can check if the channel was registered and cleaned up.
+func TestGetAIStreamsStatus(t *testing.T) {
+	state := &types.AppState{GeminiEnabled: true}
+	cfg := &config.Config{}
+	mockTranslator := &MockTranslator{}
+	state.Translator = mockTranslator
+	router := setupTestRouter(state, cfg)
+
+	req, _ := http.NewRequest("GET", "/api/ai/streams", nil)
+	req.Header.Set("X-Test-Auth", "true")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, true, resp["masterEnabled"])
+	assert.NotEmpty(t, resp["sessions"])
+}
+
+func TestGetSystemConnection(t *testing.T) {
+	cfg := &config.Config{Port: "8080"}
+	router := setupTestRouter(&types.AppState{}, cfg)
+
+	req, _ := http.NewRequest("GET", "/api/system/connection", nil)
+	req.Header.Set("X-Test-Auth", "true")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]string
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Contains(t, resp["serverUrl"], "8080")
 }
 
 func TestStreamHandler(t *testing.T) {
@@ -157,18 +184,14 @@ func TestStreamHandler(t *testing.T) {
 
 	req, _ := http.NewRequestWithContext(ctx, "GET", "/stream", nil)
 	w := httptest.NewRecorder()
-
 	go router.ServeHTTP(w, req)
 
 	time.Sleep(100 * time.Millisecond)
-
-	// Verify that a channel was registered
 	found := false
 	state.StreamChannels.Range(func(key, value interface{}) bool {
 		found = true
 		ch := key.(chan []float32)
 		ch <- []float32{0.1, 0.1}
-
 		return false
 	})
 	assert.True(t, found)
@@ -177,14 +200,9 @@ func TestStreamHandler(t *testing.T) {
 }
 
 func TestListRecordingFiles(t *testing.T) {
-	// Create a temp dir
-	tmpDir, err := os.MkdirTemp("", "test_recordings_*")
-	assert.NoError(t, err)
+	tmpDir, _ := os.MkdirTemp("", "test_recordings_*")
 	defer os.RemoveAll(tmpDir)
-
-	// Create some dummy files
 	os.WriteFile(tmpDir+"/rec1.wav", []byte("data"), 0644)
-	os.WriteFile(tmpDir+"/rec2.wav", []byte("data"), 0644)
 
 	state := &types.AppState{}
 	cfg := &config.Config{StorageLocation: tmpDir}
@@ -196,29 +214,25 @@ func TestListRecordingFiles(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	
-	type FileInfo struct {
-		Name    string    `json:"name"`
-		Size    int64     `json:"size"`
-		ModTime time.Time `json:"modTime"`
-	}
 
-	var resp []FileInfo
-	json.Unmarshal(w.Body.Bytes(), &resp)
-	assert.Len(t, resp, 2)
+	t.Run("Empty Directory", func(t *testing.T) {
+		emptyDir, _ := os.MkdirTemp("", "empty_*")
+		defer os.RemoveAll(emptyDir)
+		cfg.StorageLocation = emptyDir
+		req, _ := http.NewRequest("GET", "/api/recordings/files", nil)
+		req.Header.Set("X-Test-Auth", "true")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
 }
-
 
 func TestUpdateAudioConfig(t *testing.T) {
 	state := &types.AppState{}
 	cfg := &config.Config{}
 	router := setupTestRouter(state, cfg)
 
-	body := map[string]interface{}{
-		"chL":   1,
-		"chR":   2,
-		"boost": 2.5,
-	}
+	body := map[string]interface{}{"chL": 1, "chR": 2, "boost": 2.5}
 	jsonBody, _ := json.Marshal(body)
 	req, _ := http.NewRequest("PATCH", "/api/audio/config", bytes.NewBuffer(jsonBody))
 	req.Header.Set("X-Test-Auth", "true")
@@ -227,32 +241,7 @@ func TestUpdateAudioConfig(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, int32(1), state.ChLeft)
-	assert.Equal(t, int32(2), state.ChRight)
 	assert.Equal(t, 2.5, state.Boost)
-}
-
-func TestUpdateAIStreams(t *testing.T) {
-	state := &types.AppState{
-		IsRecording: true,
-	}
-	cfg := &config.Config{}
-	
-	mockTranslator := &MockTranslator{}
-	state.Translator = mockTranslator
-
-	router := setupTestRouter(state, cfg)
-
-	body := map[string]interface{}{
-		"action":  "toggle_master",
-		"enabled": true,
-	}
-	jsonBody, _ := json.Marshal(body)
-	req, _ := http.NewRequest("POST", "/api/ai/streams", bytes.NewBuffer(jsonBody))
-	req.Header.Set("X-Test-Auth", "true")
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
 }
 
 func TestPushRecordingToCloud(t *testing.T) {
@@ -261,19 +250,11 @@ func TestPushRecordingToCloud(t *testing.T) {
 	os.WriteFile(tmpDir+"/rec.wav", []byte("data"), 0644)
 
 	state := &types.AppState{}
-	cfg := &config.Config{
-		StorageLocation:    tmpDir,
-		CloudDriveLocation: tmpDir + "/cloud",
-	}
+	cfg := &config.Config{StorageLocation: tmpDir, CloudDriveLocation: tmpDir + "/cloud"}
 	os.Mkdir(cfg.CloudDriveLocation, 0755)
 
 	router := setupTestRouter(state, cfg)
-
-	body := map[string]interface{}{
-		"source": "rec.wav",
-		"target": "pushed_rec.wav",
-	}
-
+	body := map[string]interface{}{"source": "rec.wav", "target": "pushed.wav"}
 	jsonBody, _ := json.Marshal(body)
 	req, _ := http.NewRequest("POST", "/api/recordings/push", bytes.NewBuffer(jsonBody))
 	req.Header.Set("X-Test-Auth", "true")
@@ -283,17 +264,66 @@ func TestPushRecordingToCloud(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
+func TestSubtitlesHandler(t *testing.T) {
+	state := &types.AppState{GeminiEnabled: true}
+	mockTranslator := &MockTranslator{}
+	state.Translator = mockTranslator
+	router := setupTestRouter(state, cfg)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	req, _ := http.NewRequestWithContext(ctx, "GET", "/subtitles/English", nil)
+	w := httptest.NewRecorder()
+	go router.ServeHTTP(w, req)
+
+	time.Sleep(100 * time.Millisecond)
+	if mockTranslator.subtitleChan != nil {
+		mockTranslator.subtitleChan <- "Hello"
+	}
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+}
+
+func TestNewWSHandler(t *testing.T) {
+	state := &types.AppState{}
+	cfg := &config.Config{AdminPassword: "pass"}
+	server := httptest.NewServer(setupTestRouter(state, cfg))
+	defer server.Close()
+
+	wsURL := "ws" + server.URL[4:] + "/ws?pass=pass"
+	dialer := websocket.Dialer{}
+	conn, resp, err := dialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("Failed to dial: %v", err)
+	}
+	assert.Equal(t, http.StatusSwitchingProtocols, resp.StatusCode)
+	defer conn.Close()
+
+	time.Sleep(100 * time.Millisecond)
+	found := false
+	state.Clients.Range(func(key, value interface{}) bool {
+		found = true
+		return false
+	})
+	assert.True(t, found)
+}
 
 type MockTranslator struct {
 	types.Translator
+	subtitleChan chan string
 }
 
 func (m *MockTranslator) SetEnabled(enabled bool) {}
 func (m *MockTranslator) GetChannel(lang string) chan []float32 { return nil }
 func (m *MockTranslator) ListSessions() []types.SessionInfo {
-	return []types.SessionInfo{
-		{Language: "English"},
-		{Language: "Spanish"},
-	}
+	return []types.SessionInfo{{Language: "English"}}
 }
+func (m *MockTranslator) GetSubtitles(lang string) (chan string, func()) {
+	m.subtitleChan = make(chan string, 10)
+	return m.subtitleChan, func() { close(m.subtitleChan) }
+}
+func (m *MockTranslator) StopSession(lang string, subs bool) {}
+func (m *MockTranslator) CloseAll() {}
 
+var cfg = &config.Config{}

@@ -567,7 +567,7 @@ func NewWSHandler(state *types.AppState, cfg *config.Config) gin.HandlerFunc {
 		if auth != true {
 			// Fallback for non-session clients (e.g. CLI tools if any)
 			pass := c.Query("pass")
-			if pass != cfg.AdminPassword && pass != "" {
+			if pass == cfg.AdminPassword && pass != "" {
 				// OK
 			} else {
 				user, password, hasAuth := c.Request.BasicAuth()

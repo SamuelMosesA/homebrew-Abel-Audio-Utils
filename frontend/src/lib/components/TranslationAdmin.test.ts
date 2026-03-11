@@ -56,4 +56,32 @@ describe('TranslationAdmin.svelte', () => {
         const killButton = screen.getByText(/Kill/i);
         expect(killButton).toBeInTheDocument();
     });
+
+    it('should call stopTranslation when Kill button is clicked and confirmed', async () => {
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+        audioState.translations = [
+            { language: 'tamil', listeners: 1, subtitles: true }
+        ];
+        render(TranslationAdmin);
+        
+        const killButton = screen.getByText(/Kill/i);
+        await fireEvent.click(killButton);
+        
+        expect(confirmSpy).toHaveBeenCalled();
+        expect(audioConfig.stopTranslation).toHaveBeenCalledWith('tamil');
+    });
+
+    it('should NOT call stopTranslation when Kill button is clicked but NOT confirmed', async () => {
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+        audioState.translations = [
+            { language: 'tamil', listeners: 1, subtitles: true }
+        ];
+        render(TranslationAdmin);
+        
+        const killButton = screen.getByText(/Kill/i);
+        await fireEvent.click(killButton);
+        
+        expect(confirmSpy).toHaveBeenCalled();
+        expect(audioConfig.stopTranslation).not.toHaveBeenCalled();
+    });
 });
