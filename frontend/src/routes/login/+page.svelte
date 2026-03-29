@@ -1,5 +1,5 @@
 <script lang="ts">
-    import LoginView from "$lib/components/LoginView.svelte";
+    import LoginView from "$lib/components/login/LoginView.svelte";
     import { getAppContext } from "$lib/audioState.svelte";
     import { goto } from "$app/navigation";
 

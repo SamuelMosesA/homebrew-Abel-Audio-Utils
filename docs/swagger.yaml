@@ -16,6 +16,23 @@ info:
   title: Behringer Audio Recorder API
   version: "1.0"
 paths:
+  /api/ai/config:
+    get:
+      description: Returns the list of configured languages and the original language
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: AI Configuration
+          schema:
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+      summary: Get AI configuration
+      tags:
+      - AI
   /api/ai/streams:
     get:
       description: Returns active sessions and master state
@@ -63,6 +80,24 @@ paths:
       - CookieAuth: []
       - BasicAuth: []
       summary: Control AI streams
+      tags:
+      - AI
+  /api/ai/subtitles:
+    get:
+      description: Real-time SSE stream of subtitles for a specific language
+      parameters:
+      - description: Language
+        in: query
+        name: lang
+        type: string
+      produces:
+      - text/event-stream
+      responses:
+        "200":
+          description: SSE Stream
+          schema:
+            type: string
+      summary: Get subtitles stream
       tags:
       - AI
   /api/audio/config:

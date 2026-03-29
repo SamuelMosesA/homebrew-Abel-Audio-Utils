@@ -99,8 +99,12 @@ export class AudioStore {
 }
 
 export class AIStore {
-    geminiMasterEnabled = $state(true);
+    geminiMasterEnabled = $state(false);
     translations = $state<TranslationSession[]>([]);
+    aiConfig = $state<{ languages: { code: string, name: string }[], originalLanguage: string }>({
+        languages: [],
+        originalLanguage: "English"
+    });
 
     constructor(private ui: UIStore) {}
 
@@ -114,6 +118,17 @@ export class AIStore {
             }
         } catch (e) {
             console.error("Error syncing Gemini status", e);
+        }
+    }
+
+    async fetchConfig() {
+        try {
+            const res = await fetch("/api/ai/config", { credentials: "include" });
+            if (res.ok) {
+                this.aiConfig = await res.json();
+            }
+        } catch (e) {
+            console.error("Error fetching AI config", e);
         }
     }
 
@@ -213,12 +228,8 @@ export class SystemStore {
         
         this.ui.wasKicked = false;
         const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-        let url = `${protocol}${window.location.host}/ws`;
+        const url = `${protocol}${window.location.host}/ws`;
         
-        const pass = localStorage.getItem("admin_password");
-        if (!pass) return;
-        
-        url += `?pass=${pass}&session=${this.sessionId}`;
         this.#ws = new WebSocket(url);
         this.#ws.binaryType = "arraybuffer";
 
@@ -249,7 +260,6 @@ export class SystemStore {
             if (res.ok) {
                 const data = await res.json();
                 localStorage.setItem("admin_user", username);
-                localStorage.setItem("admin_password", pass);
                 if (data.session) {
                     this.sessionId = data.session;
                     localStorage.setItem("session_id", data.session);
@@ -268,7 +278,6 @@ export class SystemStore {
 
     logout() {
         localStorage.removeItem("admin_user");
-        localStorage.removeItem("admin_password");
         localStorage.removeItem("session_id");
         this.isAuthenticated = false;
         this.sessionId = "";
@@ -279,7 +288,7 @@ export class SystemStore {
 }
 
 export class UIStore {
-    currentView = $state<"landing" | "stream" | "admin">("landing");
+    currentView = $state<"landing" | "stream" | "admin" | "ai_live_audio">("landing");
     notification = $state<{ message: string, section: string } | null>(null);
     wasKicked = $state(false);
     #notificationTimeout: any = null;
@@ -354,6 +363,7 @@ export class AppState {
         if (typeof window !== 'undefined' && window.location.protocol.startsWith('http')) {
             this.audio.fetchDevices();
             this.audio.sync();
+            this.ai.fetchConfig();
             this.ai.sync();
         }
     }

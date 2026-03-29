@@ -46,7 +46,6 @@ declare module '$env/static/private' {
 	export const GIT_ASKPASS: string;
 	export const XDG_SESSION_TYPE: string;
 	export const npm_node_execpath: string;
-	export const BROWSER: string;
 	export const SHLVL: string;
 	export const npm_config_noproxy: string;
 	export const OLDPWD: string;
@@ -77,16 +76,13 @@ declare module '$env/static/private' {
 	export const MAKEFLAGS: string;
 	export const DBUS_SESSION_BUS_ADDRESS: string;
 	export const SYSTEMD_EXEC_PID: string;
-	export const VSCODE_PYTHON_AUTOACTIVATE_GUARD: string;
 	export const TICKTICK_PASSWORD: string;
 	export const GIO_LAUNCHED_DESKTOP_FILE_PID: string;
-	export const ANTIGRAVITY_AGENT: string;
 	export const COLORTERM: string;
 	export const COLOR: string;
 	export const NVM_DIR: string;
 	export const MAKE_TERMERR: string;
 	export const WAYLAND_DISPLAY: string;
-	export const FORCE_COLOR: string;
 	export const LOGNAME: string;
 	export const __VK_LAYER_NV_optimus: string;
 	export const _: string;
@@ -94,14 +90,11 @@ declare module '$env/static/private' {
 	export const npm_config_prefix: string;
 	export const npm_config_npm_version: string;
 	export const MEMORY_PRESSURE_WATCH: string;
-	export const USER_ZDOTDIR: string;
 	export const XDG_SESSION_CLASS: string;
-	export const PLAYWRIGHT_TEST: string;
 	export const TICKTICK_EMAIL: string;
 	export const USERNAME: string;
 	export const TERM: string;
 	export const npm_config_cache: string;
-	export const DEBUG_COLORS: string;
 	export const GNOME_DESKTOP_SESSION_ID: string;
 	export const FC_FONTATIONS: string;
 	export const npm_config_node_gyp: string;
@@ -116,7 +109,6 @@ declare module '$env/static/private' {
 	export const XDG_RUNTIME_DIR: string;
 	export const XDG_MENU_PREFIX: string;
 	export const DISPLAY: string;
-	export const VSCODE_INJECTION: string;
 	export const LANG: string;
 	export const __NV_PRIME_RENDER_OFFLOAD: string;
 	export const XDG_CURRENT_DESKTOP: string;
@@ -139,6 +131,7 @@ declare module '$env/static/private' {
 	export const Z3_LIBRARY_PATH: string;
 	export const GPG_AGENT_INFO: string;
 	export const VSCODE_GIT_ASKPASS_EXTRA_ARGS: string;
+	export const VSCODE_NONCE: string;
 	export const QT_IM_MODULE: string;
 	export const npm_config_globalconfig: string;
 	export const npm_config_init_module: string;
@@ -148,7 +141,6 @@ declare module '$env/static/private' {
 	export const FZF_DEFAULT_COMMAND: string;
 	export const npm_execpath: string;
 	export const XDG_DATA_DIRS: string;
-	export const ZDOTDIR: string;
 	export const NVM_CD_FLAGS: string;
 	export const npm_config_global_prefix: string;
 	export const TICKTICK_API_SECRET: string;
@@ -254,7 +246,6 @@ declare module '$env/dynamic/private' {
 		GIT_ASKPASS: string;
 		XDG_SESSION_TYPE: string;
 		npm_node_execpath: string;
-		BROWSER: string;
 		SHLVL: string;
 		npm_config_noproxy: string;
 		OLDPWD: string;
@@ -285,16 +276,13 @@ declare module '$env/dynamic/private' {
 		MAKEFLAGS: string;
 		DBUS_SESSION_BUS_ADDRESS: string;
 		SYSTEMD_EXEC_PID: string;
-		VSCODE_PYTHON_AUTOACTIVATE_GUARD: string;
 		TICKTICK_PASSWORD: string;
 		GIO_LAUNCHED_DESKTOP_FILE_PID: string;
-		ANTIGRAVITY_AGENT: string;
 		COLORTERM: string;
 		COLOR: string;
 		NVM_DIR: string;
 		MAKE_TERMERR: string;
 		WAYLAND_DISPLAY: string;
-		FORCE_COLOR: string;
 		LOGNAME: string;
 		__VK_LAYER_NV_optimus: string;
 		_: string;
@@ -302,14 +290,11 @@ declare module '$env/dynamic/private' {
 		npm_config_prefix: string;
 		npm_config_npm_version: string;
 		MEMORY_PRESSURE_WATCH: string;
-		USER_ZDOTDIR: string;
 		XDG_SESSION_CLASS: string;
-		PLAYWRIGHT_TEST: string;
 		TICKTICK_EMAIL: string;
 		USERNAME: string;
 		TERM: string;
 		npm_config_cache: string;
-		DEBUG_COLORS: string;
 		GNOME_DESKTOP_SESSION_ID: string;
 		FC_FONTATIONS: string;
 		npm_config_node_gyp: string;
@@ -324,7 +309,6 @@ declare module '$env/dynamic/private' {
 		XDG_RUNTIME_DIR: string;
 		XDG_MENU_PREFIX: string;
 		DISPLAY: string;
-		VSCODE_INJECTION: string;
 		LANG: string;
 		__NV_PRIME_RENDER_OFFLOAD: string;
 		XDG_CURRENT_DESKTOP: string;
@@ -347,6 +331,7 @@ declare module '$env/dynamic/private' {
 		Z3_LIBRARY_PATH: string;
 		GPG_AGENT_INFO: string;
 		VSCODE_GIT_ASKPASS_EXTRA_ARGS: string;
+		VSCODE_NONCE: string;
 		QT_IM_MODULE: string;
 		npm_config_globalconfig: string;
 		npm_config_init_module: string;
@@ -356,7 +341,6 @@ declare module '$env/dynamic/private' {
 		FZF_DEFAULT_COMMAND: string;
 		npm_execpath: string;
 		XDG_DATA_DIRS: string;
-		ZDOTDIR: string;
 		NVM_CD_FLAGS: string;
 		npm_config_global_prefix: string;
 		TICKTICK_API_SECRET: string;

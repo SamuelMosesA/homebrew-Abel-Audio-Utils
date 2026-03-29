@@ -1,5 +1,5 @@
 <script lang="ts">
-    import LandingView from "$lib/components/LandingView.svelte";
+    import LandingView from "$lib/components/views/LandingView.svelte";
 </script>
 
 <LandingView />

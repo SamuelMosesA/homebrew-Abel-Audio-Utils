@@ -1,5 +1,5 @@
 <script lang="ts">
-    import AudioAdminView from "$lib/components/AudioAdminView.svelte";
+    import AudioAdminView from "$lib/components/admin/AudioAdminView.svelte";
     import { getAppContext } from "$lib/audioState.svelte";
     import { goto } from "$app/navigation";
 
