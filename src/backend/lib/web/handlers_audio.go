@@ -59,13 +59,13 @@ func UpdateAudioConfig(appState *state.AppState, cfg *config.Config) gin.Handler
 				err := audioengine.StartAudioEngine(nil, appState, cfg, *req.DeviceID, appState.RecordChan, appState.PlaybackChan)
 				if err != nil {
 					logger.Error("Error starting audio engine",
-						slog.Any("error", err),
+						slog.Any("audio.error", err),
 					)
 				} else {
 					s.SetIsRunning(true)
 					s.SetDeviceID(int32(*req.DeviceID))
 					logger.Info("Audio engine started",
-						slog.Int("deviceID", *req.DeviceID),
+						slog.Int("audio.device_id", *req.DeviceID),
 					)
 				}
 			}
@@ -103,6 +103,7 @@ func GetAudioConfig(appState *state.AppState) gin.HandlerFunc {
 			"chL":                conf.ChL(),
 			"chR":                conf.ChR(),
 			"boost":              conf.Boost(),
+			"sampleRate":         conf.SampleRate(),
 			"storageLocation":    loc.Storage(),
 			"cloudDriveLocation": loc.CloudDrive(),
 		})
@@ -118,8 +119,8 @@ func StreamHandler(appState *state.AppState, cfg *config.Config) gin.HandlerFunc
 		}
 
 		connLogger := logger.With(
-			slog.String("ip", c.Request.RemoteAddr),
-			slog.String("language", lang),
+			slog.String("client.ip", c.Request.RemoteAddr),
+			slog.String("client.language", lang),
 		)
 
 		connLogger.Info("New listener connection requested")
@@ -139,8 +140,12 @@ func StreamHandler(appState *state.AppState, cfg *config.Config) gin.HandlerFunc
 		binary.LittleEndian.PutUint32(header[16:20], 16) // fmt chunk size
 		binary.LittleEndian.PutUint16(header[20:22], 1)  // PCM
 		binary.LittleEndian.PutUint16(header[22:24], 2)  // Channels
-		binary.LittleEndian.PutUint32(header[24:28], uint32(cfg.SampleRate))
-		binary.LittleEndian.PutUint32(header[28:32], uint32(cfg.SampleRate*2*2)) // Byte rate
+		sampleRate := int(appState.Config().SampleRate())
+		if sampleRate <= 0 {
+			sampleRate = cfg.SampleRate
+		}
+		binary.LittleEndian.PutUint32(header[24:28], uint32(sampleRate))
+		binary.LittleEndian.PutUint32(header[28:32], uint32(sampleRate*2*2)) // Byte rate
 		binary.LittleEndian.PutUint16(header[32:34], 4)                          // Block align
 		binary.LittleEndian.PutUint16(header[34:36], 16)                         // Bits per sample
 		copy(header[36:40], "data")
@@ -171,7 +176,7 @@ func StreamHandler(appState *state.AppState, cfg *config.Config) gin.HandlerFunc
 		}
 
 		connLogger.Info("New listener connected",
-			slog.Bool("translated", isTranslated),
+			slog.Bool("client.translated", isTranslated),
 		)
 		defer connLogger.Info("Listener disconnected")
 

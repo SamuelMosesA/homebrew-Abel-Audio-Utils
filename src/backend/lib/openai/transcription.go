@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -21,6 +22,7 @@ import (
 
 type TranscriptionManager struct {
 	Config             *config.Config
+	AppState           *state.AppState
 	APIKey             string
 	Model              string
 	OriginalLanguage   string
@@ -36,9 +38,10 @@ type TranscriptionManager struct {
 	OnStateChange func()
 }
 
-func NewTranscriptionManager(cfg *config.Config, apiKey, model, originalLang string, audioInSize, audioOutSize, subtitleSize int) (*TranscriptionManager, error) {
+func NewTranscriptionManager(cfg *config.Config, appState *state.AppState, apiKey, model, originalLang string, audioInSize, audioOutSize, subtitleSize int) (*TranscriptionManager, error) {
 	return &TranscriptionManager{
 		Config:             cfg,
+		AppState:           appState,
 		APIKey:             apiKey,
 		Model:              model,
 		OriginalLanguage:   originalLang,
@@ -119,6 +122,9 @@ func (m *TranscriptionManager) GetSubtitles(language string) (chan string, func(
 }
 
 func (m *TranscriptionManager) GetChannel(language string) chan []float32 {
+	if !m.Enabled.Load() {
+		return nil
+	}
 	if language == "" {
 		language = m.OriginalLanguage
 	}
@@ -170,7 +176,7 @@ func (m *TranscriptionManager) PushAudio(chunk []float32) {
 				}
 			}
 			m.LastRestart.Store(lang, now)
-			logger.Info("Auto-starting transcription", slog.String("language", lang))
+			logger.Info("Auto-starting transcription", slog.String("ai.language", lang))
 			m.GetChannel(lang)
 		}
 		return true
@@ -195,16 +201,58 @@ func (m *TranscriptionManager) PushAudio(chunk []float32) {
 }
 
 func (m *TranscriptionManager) downsample(chunk []float32) []byte {
-	downsampled := make([]int16, 0, len(chunk)/4)
-	for i := 0; i < len(chunk)-3; i += 4 {
-		avg := (chunk[i] + chunk[i+1] + chunk[i+2] + chunk[i+3]) / 4.0
-		if avg > 1.0 {
-			avg = 1.0
-		} else if avg < -1.0 {
-			avg = -1.0
-		}
-		downsampled = append(downsampled, int16(avg*32767))
+	srcRate := int(m.AppState.Config().SampleRate())
+	if srcRate <= 0 {
+		srcRate = m.Config.SampleRate
 	}
+	dstRate := 24000 // OpenAI Realtime expects 24kHz
+
+	// If sample rates are already equal to 24000 (mono conversion only)
+	if srcRate == dstRate {
+		downsampled := make([]int16, len(chunk)/2)
+		for i := 0; i < len(chunk)/2; i++ {
+			avg := (chunk[i*2] + chunk[i*2+1]) / 2.0
+			if avg > 1.0 { avg = 1.0 } else if avg < -1.0 { avg = -1.0 }
+			downsampled[i] = int16(avg * 32767)
+		}
+		bytes := make([]byte, len(downsampled)*2)
+		for i, v := range downsampled {
+			bytes[i*2] = byte(v & 0xff)
+			bytes[i*2+1] = byte(v >> 8)
+		}
+		return bytes
+	}
+
+	// General downsampling using accumulators/ratios
+	ratio := float64(srcRate) / float64(dstRate)
+	srcFrames := len(chunk) / 2
+	dstFrames := int(float64(srcFrames) / ratio)
+	if dstFrames <= 0 {
+		return nil
+	}
+
+	downsampled := make([]int16, dstFrames)
+	for i := 0; i < dstFrames; i++ {
+		startFrame := int(float64(i) * ratio)
+		endFrame := int(float64(i+1) * ratio)
+		if endFrame > srcFrames {
+			endFrame = srcFrames
+		}
+		if endFrame <= startFrame {
+			endFrame = startFrame + 1
+		}
+
+		var sum float32
+		count := 0
+		for f := startFrame; f < endFrame; f++ {
+			sum += chunk[f*2] + chunk[f*2+1]
+			count += 2
+		}
+		avg := sum / float32(count)
+		if avg > 1.0 { avg = 1.0 } else if avg < -1.0 { avg = -1.0 }
+		downsampled[i] = int16(avg * 32767)
+	}
+
 	bytes := make([]byte, len(downsampled)*2)
 	for i, v := range downsampled {
 		bytes[i*2] = byte(v & 0xff)
@@ -215,11 +263,11 @@ func (m *TranscriptionManager) downsample(chunk []float32) []byte {
 
 func (m *TranscriptionManager) runSession(s *RealtimeSession) {
 	logger := slog.With("component", "openai")
-	logger.Info("Starting transcription session", slog.String("language", s.Language))
+	logger.Info("Starting transcription session", slog.String("ai.language", s.Language))
 	defer m.Sessions.Delete(s.Language)
 	defer close(s.AudioOut)
 
-	url := "wss://api.openai.com/v1/realtime?intent=transcription"
+	url := fmt.Sprintf("wss://api.openai.com/v1/realtime?model=%s", m.Model)
 	header := http.Header{}
 	header.Add("Authorization", "Bearer "+m.APIKey)
 	header.Add("OpenAI-Safety-Identifier", "abel-recorder-v1")
@@ -236,9 +284,9 @@ func (m *TranscriptionManager) runSession(s *RealtimeSession) {
 			body = string(buf[:n])
 		}
 		logger.Error("Transcription dial error",
-			slog.Int("status", status),
-			slog.Any("error", err),
-			slog.String("body", body),
+			slog.Int("openai.status_code", status),
+			slog.Any("openai.error", err),
+			slog.String("openai.response_body", body),
 		)
 		return
 	}
@@ -306,7 +354,7 @@ func (m *TranscriptionManager) runSession(s *RealtimeSession) {
 					}
 				}
 			} else if raw["type"] == "error" {
-				logger.Error("Transcription error", slog.Any("error", raw["error"]))
+				logger.Error("Transcription error", slog.Any("openai.error", raw["error"]))
 				return
 			}
 		}

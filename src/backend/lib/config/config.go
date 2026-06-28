@@ -24,13 +24,6 @@ type Config struct {
 	DefaultChR         int     `yaml:"default_ch_r"`
 	DefaultBoost       float64 `yaml:"default_boost"`
 	AdminUserCredentials  string  `yaml:"admin_user_credentials"`
-	GeminiAPIKey          string  `yaml:"gemini_api_key"`
-	GeminiModel           string  `yaml:"gemini_model"`
-	GeminiVoice           string  `yaml:"gemini_voice"`
-	GeminiAudioInBufferSize int    `yaml:"gemini_audio_in_buffer_size"`
-	GeminiAudioOutBufferSize int   `yaml:"gemini_audio_out_buffer_size"`
-	GeminiSubtitleBufferSize int   `yaml:"gemini_subtitle_buffer_size"`
-	AIProvider            string       `yaml:"ai_provider"`
 	OpenAIAPIKey          string       `yaml:"openai_api_key"`
 	OpenAITranslateModel  string       `yaml:"openai_translate_model"`
 	OpenAITranscribeModel string       `yaml:"openai_transcribe_model"`
@@ -101,43 +94,22 @@ func LoadConfig(path string) (*Config, error) {
 		}
 	}
 
-	if cfg.GeminiAPIKey == "" {
-		cfg.GeminiAPIKey = os.Getenv("GEMINI_API_KEY")
-	}
-	if cfg.GeminiModel == "" {
-		cfg.GeminiModel = "models/gemini-2.5-flash-native-audio-preview-12-2025"
-	}
-	if cfg.GeminiVoice == "" {
-		cfg.GeminiVoice = "Zephyr"
-	}
-	if cfg.GeminiAudioInBufferSize <= 0 {
-		cfg.GeminiAudioInBufferSize = 100
-	}
-	if cfg.GeminiAudioOutBufferSize <= 0 {
-		cfg.GeminiAudioOutBufferSize = 1000
-	}
-	if cfg.GeminiSubtitleBufferSize <= 0 {
-		cfg.GeminiSubtitleBufferSize = 100
-	}
-	if cfg.AIProvider == "" {
-		cfg.AIProvider = "gemini"
-	}
 	if cfg.OpenAIAPIKey == "" {
 		cfg.OpenAIAPIKey = strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
 	}
 	cfg.OpenAIAPIKey = strings.TrimSpace(cfg.OpenAIAPIKey)
 	if cfg.OpenAITranslateModel == "" {
-		cfg.OpenAITranslateModel = "gpt-realtime-translate"
+		cfg.OpenAITranslateModel = "gpt-4o-realtime-preview"
 	}
 	if cfg.OpenAITranscribeModel == "" {
-		cfg.OpenAITranscribeModel = "gpt-realtime-whisper"
+		cfg.OpenAITranscribeModel = "gpt-4o-realtime-preview"
 	}
 	if cfg.OpenAIVoice == "" {
 		cfg.OpenAIVoice = "alloy"
 	}
 
 	if cfg.AIOriginalLanguage == "" {
-		cfg.AIOriginalLanguage = "English"
+		cfg.AIOriginalLanguage = "en"
 	}
 	if len(cfg.AILanguages) == 0 {
 		cfg.AILanguages = []AILanguage{

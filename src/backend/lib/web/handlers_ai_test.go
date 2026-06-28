@@ -47,7 +47,7 @@ func TestSubtitlesHandler(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	req, _ := http.NewRequestWithContext(ctx, "GET", "/subtitles/English", nil)
+	req, _ := http.NewRequestWithContext(ctx, "GET", "/subtitles/en", nil)
 	w := httptest.NewRecorder()
 	go router.ServeHTTP(w, req)
 

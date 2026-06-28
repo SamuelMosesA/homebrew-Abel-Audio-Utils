@@ -3,6 +3,7 @@ package web
 import (
 	"abel/src/backend/lib/config"
 	"abel/src/backend/lib/state"
+	"abel/src/backend/lib/telemetry"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -42,15 +43,15 @@ func UpdateAIStreams(appState *state.AppState, cfg *config.Config) gin.HandlerFu
 		state.Update[state.AIConfig](appState, state.SectionAI, func(s *state.AIConfig) {
 			if req.Action == "toggle_master" && req.Enabled != nil {
 				logger.Info("Toggling master AI state",
-					slog.Bool("enabled", *req.Enabled),
-					slog.Bool("current_state", s.IsEnabled()),
+					slog.Bool("ai.enabled", *req.Enabled),
+					slog.Bool("ai.current_state", s.IsEnabled()),
 				)
 				s.SetEnabled(*req.Enabled)
 				if !*req.Enabled {
 					shouldCloseAll = true
 				}
 				logger.Info("Master AI state updated",
-					slog.Bool("enabled", s.IsEnabled()),
+					slog.Bool("ai.enabled", s.IsEnabled()),
 				)
 			}
 		})
@@ -67,8 +68,8 @@ func UpdateAIStreams(appState *state.AppState, cfg *config.Config) gin.HandlerFu
 			if appState.Translator != nil {
 				resolved := cfg.ResolveLanguageName(req.Language)
 				logger.Info("Stopping translation",
-					slog.String("language", req.Language),
-					slog.String("resolved", resolved),
+					slog.String("ai.language", req.Language),
+					slog.String("ai.resolved", resolved),
 				)
 				appState.Translator.StopSession(resolved, true)
 			}
@@ -138,12 +139,12 @@ func SubtitlesHandler(appState *state.AppState, cfg *config.Config) gin.HandlerF
 		resolvedLang := cfg.ResolveLanguageName(lang)
 
 		connLogger := logger.With(
-			slog.String("language", lang),
-			slog.String("resolved", resolvedLang),
+			slog.String("client.language", lang),
+			slog.String("client.resolved_language", resolvedLang),
 		)
 
 		connLogger.Info("Subtitles connection requested",
-			slog.String("ip", c.Request.RemoteAddr),
+			slog.String("client.ip", c.Request.RemoteAddr),
 		)
 
 		if appState.Translator == nil {
@@ -187,9 +188,9 @@ func SubtitlesHandler(appState *state.AppState, cfg *config.Config) gin.HandlerF
 					connLogger.Info("Subtitles channel closed")
 					return
 				}
-				connLogger.Info("Sending subtitle",
-					slog.String("subtitle.text", text),
-				)
+				if telemetry.SubtitlesSent != nil {
+					telemetry.SubtitlesSent.Add(c.Request.Context(), 1)
+				}
 				fmt.Fprintf(c.Writer, "data: %s\n\n", text)
 				flusher.Flush()
 			case <-c.Request.Context().Done():

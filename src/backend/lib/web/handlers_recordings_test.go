@@ -3,6 +3,7 @@ package web
 import (
 	"abel/src/backend/lib/config"
 	"abel/src/backend/lib/state"
+	"abel/src/backend/lib/audioengine"
 	"bytes"
 	"encoding/binary"
 	"encoding/json"

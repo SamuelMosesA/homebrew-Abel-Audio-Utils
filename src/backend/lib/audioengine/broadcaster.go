@@ -6,9 +6,7 @@ import (
 	"abel/src/backend/lib/telemetry"
 	"context"
 	"encoding/binary"
-	"log/slog"
 	"math"
-
 	"github.com/gorilla/websocket"
 )
 
@@ -30,11 +28,7 @@ func CalculatePeakMeters(buffer []float32) (float32, float32) {
 
 // StartAudioBroadcaster starts a goroutine that continuously broadcasts audio data to connected WebSocket clients.
 func StartAudioBroadcaster(appState *state.AppState, cfg *config.Config, playbackChan <-chan []float32) {
-	logger := slog.With("component", "broadcaster")
 	go func() {
-		count := 0
-		totalAIPush := 0
-
 		for chunk := range playbackChan {
 			// Calculate peak meters for the chunk
 			maxL, maxR := CalculatePeakMeters(chunk)
@@ -75,15 +69,10 @@ func StartAudioBroadcaster(appState *state.AppState, cfg *config.Config, playbac
 			// Push to AI for translation
 			if appState.Translator != nil {
 				appState.Translator.PushAudio(chunk)
-				totalAIPush++
 			}
 
-			count++
-			if count%100 == 0 {
-				logger.Info("Processed raw chunks",
-					slog.Int("count", count),
-					slog.Int("ai_pushes", totalAIPush),
-				)
+			if telemetry.ProcessedChunks != nil {
+				telemetry.ProcessedChunks.Add(context.Background(), 1)
 			}
 		}
 	}()

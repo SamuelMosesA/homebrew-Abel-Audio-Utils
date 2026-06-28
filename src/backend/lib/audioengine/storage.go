@@ -46,7 +46,7 @@ func StartStorageWorker(appState *state.AppState, recordChan <-chan []float32) {
 				appState.Engine().AddSamples(int64(n))
 			}
 			if telemetry.RecordingLatency != nil {
-				telemetry.RecordingLatency.Record(context.Background(), time.Since(startTime).Seconds())
+				telemetry.RecordingLatency.Record(context.Background(), float64(time.Since(startTime).Nanoseconds())/1e6)
 			}
 		}
 	}()

@@ -1,6 +1,6 @@
 <script lang="ts">
     import { getAppContext } from "$lib/audioState.svelte";
-    const { audio, system, visuals, ui } = getAppContext();
+    const { audio, system, visuals, ui, files } = getAppContext();
     import { goto } from "$app/navigation";
     import Button from "../ui/Button.svelte";
     import Card from "../ui/Card.svelte";
@@ -18,7 +18,6 @@
     } from "lucide-svelte";
 
     let selectedDeviceValue = $state<string>("");
-    let isDirty = $state(false);
 
     ui.currentView = "admin";
     system.connectWebSocket();
@@ -34,7 +33,6 @@
     const handleDeviceChange = (e: Event) => {
         const val = (e.currentTarget as HTMLSelectElement).value;
         selectedDeviceValue = val;
-        isDirty = true;
     };
 
     const handleLogout = () => {
@@ -45,7 +43,6 @@
     const handleApplySettings = async () => {
         const id = selectedDeviceValue !== "" ? Number(selectedDeviceValue) : null;
         await audio.commitConfig(id);
-        isDirty = false;
     };
 </script>
 
@@ -92,7 +89,7 @@
                     <div class="grid grid-cols-2 gap-4 w-full">
                         <Button 
                             class="h-28 flex flex-col gap-2 font-black text-lg" 
-                            onclick={() => !audio.isRecording && audio.toggleRecording()}
+                            onclick={async () => { if (!audio.isRecording) { await audio.toggleRecording(); await files.fetchFiles(); } }}
                             disabled={audio.isRecording}
                         >
                             <Play class="w-8 h-8 fill-current" />
@@ -101,7 +98,7 @@
                         <Button 
                             variant="destructive"
                             class="h-28 flex flex-col gap-2 font-black text-lg" 
-                            onclick={() => audio.isRecording && audio.toggleRecording()}
+                            onclick={async () => { if (audio.isRecording) { await audio.toggleRecording(); await files.fetchFiles(); } }}
                             disabled={!audio.isRecording}
                         >
                             <Square class="w-8 h-8 fill-current" />
@@ -190,7 +187,7 @@
                     <div class="flex justify-end pt-4">
                         <Button 
                             onclick={handleApplySettings} 
-                            disabled={audio.isRecording || !isDirty}
+                            disabled={audio.isRecording}
                             class="w-full sm:w-auto"
                         >
                             Commit Configuration

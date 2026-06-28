@@ -2,7 +2,6 @@ package main
 
 import (
 	"abel/src/backend/lib/config"
-	"abel/src/backend/lib/gemini"
 	"abel/src/backend/lib/openai"
 	"abel/src/backend/lib/audioengine"
 	"abel/src/backend/lib/state"
@@ -22,7 +21,7 @@ var staticFiles embed.FS
 
 // @title Abel API
 // @version 1.0
-// @description REST API for controlling audio interfaces, recording, and Gemini models.
+// @description REST API for controlling audio interfaces, recording, and OpenAI Realtime models.
 // @host localhost:8080
 // @BasePath /
 // @securityDefinitions.basic BasicAuth
@@ -84,18 +83,15 @@ func main() {
 		s.SetChR(int32(cfg.DefaultChR))
 		s.SetBoost(cfg.DefaultBoost)
 		s.SetDeviceID(-1)
+		s.SetSampleRate(int32(cfg.SampleRate))
 	})
 
 	// Initialize AI Translation/Transcription Manager
-	var tm state.Translator
-	var initErr error
-
-	if cfg.AIProvider == "openai" && cfg.OpenAIAPIKey != "" {
-		tm, initErr = openai.NewOpenAIManager(cfg, cfg.OpenAIAPIKey, cfg.OpenAITranslateModel, cfg.OpenAITranscribeModel, cfg.OpenAIVoice, cfg.AIOriginalLanguage, cfg.GeminiAudioInBufferSize, cfg.GeminiAudioOutBufferSize, cfg.GeminiSubtitleBufferSize)
-	} else if cfg.GeminiAPIKey != "" {
-		tm, initErr = gemini.NewTranslationManager(cfg.GeminiAPIKey, cfg.GeminiModel, cfg.GeminiVoice, cfg.GeminiAudioInBufferSize, cfg.GeminiAudioOutBufferSize, cfg.GeminiSubtitleBufferSize)
+	if cfg.OpenAIAPIKey == "" {
+		logger.Warn("OpenAI API Key not set. Real-time translation/transcription will be unavailable.")
 	}
 
+	tm, initErr := openai.NewOpenAIManager(cfg, appState, cfg.OpenAIAPIKey, cfg.OpenAITranslateModel, cfg.OpenAITranscribeModel, cfg.OpenAIVoice, cfg.AIOriginalLanguage)
 	if initErr != nil {
 		logger.Warn("Failed to initialize Translation Manager", slog.Any("error", initErr))
 	} else if tm != nil {
@@ -106,7 +102,7 @@ func main() {
 		state.Update[state.AIConfig](appState, state.SectionAI, func(s *state.AIConfig) {
 			s.SetEnabled(false)
 		})
-		logger.Info("Translation manager ready", slog.String("provider", cfg.AIProvider))
+		logger.Info("Translation manager ready", slog.String("provider", "openai"))
 	}
 
 	allDevices, _ := pa.Devices()

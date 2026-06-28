@@ -8,6 +8,7 @@ class Abel < Formula
 
   depends_on "go" => :build
   depends_on "node" => :build
+  depends_on "pkg-config" => :build
   depends_on "portaudio"
 
   def install

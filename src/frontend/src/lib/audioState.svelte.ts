@@ -29,7 +29,6 @@ export interface AppStatus {
     translations: TranslationSession[];
     serverUrl: string;
     ssid: string;
-    geminiMasterEnabled: boolean;
 }
 
 import { fetchWithSync } from "./utils/api";
@@ -103,7 +102,7 @@ export class AIStore {
     translations = $state<TranslationSession[]>([]);
     aiConfig = $state<{ languages: { code: string, name: string }[], originalLanguage: string }>({
         languages: [],
-        originalLanguage: "English"
+        originalLanguage: "en"
     });
 
     constructor(private ui: UIStore) {}

@@ -45,6 +45,12 @@ func CreateRecording(appState *state.AppState, cfg *config.Config) gin.HandlerFu
 		var respFile string
 		var err error
 
+		sampleRate := int(appState.Config().SampleRate())
+		if sampleRate <= 0 {
+			sampleRate = cfg.SampleRate
+		}
+
+		var shouldUpdateBoost bool
 		state.Update[state.RecordIntent](appState, state.SectionRecording, func(s *state.RecordIntent) {
 			isRecording := s.IsRecording()
 
@@ -65,7 +71,7 @@ func CreateRecording(appState *state.AppState, cfg *config.Config) gin.HandlerFu
 					err = errCreate
 					return
 				}
-				if errHeader := audioengine.WritePlaceholderHeader(file, 2, cfg.SampleRate); errHeader != nil {
+				if errHeader := audioengine.WritePlaceholderHeader(file, 2, sampleRate); errHeader != nil {
 					file.Close()
 					err = errHeader
 					return
@@ -75,12 +81,10 @@ func CreateRecording(appState *state.AppState, cfg *config.Config) gin.HandlerFu
 				appState.Engine().ResetSamples()
 				s.SetRecording(true)
 				if req.Boost != nil {
-					state.Update[state.InterfaceConfig](appState, state.SectionInterface, func(si *state.InterfaceConfig) {
-						si.SetBoost(*req.Boost)
-					})
+					shouldUpdateBoost = true
 				}
 				logger.Info("Recording started",
-					slog.String("file", filename),
+					slog.String("recording.file", filename),
 				)
 				respStatus = "Recording started"
 				respFile = filename
@@ -101,7 +105,7 @@ func CreateRecording(appState *state.AppState, cfg *config.Config) gin.HandlerFu
 				}
 
 				filename := filepath.Base(file.Name())
-				if errFinalize := audioengine.FinalizeWavHeader(file, 2, samplesWrote, cfg.SampleRate); errFinalize != nil {
+				if errFinalize := audioengine.FinalizeWavHeader(file, 2, samplesWrote, sampleRate); errFinalize != nil {
 					file.Close()
 					err = errFinalize
 					return
@@ -113,8 +117,8 @@ func CreateRecording(appState *state.AppState, cfg *config.Config) gin.HandlerFu
 
 				s.SetRecording(false)
 				logger.Info("Recording stopped",
-					slog.String("file", filename),
-					slog.Int("samples", int(samplesWrote)),
+					slog.String("recording.file", filename),
+					slog.Int("recording.samples", int(samplesWrote)),
 				)
 				respStatus = "Recording stopped"
 				respFile = filename
@@ -122,6 +126,12 @@ func CreateRecording(appState *state.AppState, cfg *config.Config) gin.HandlerFu
 				err = fmt.Errorf("invalid action")
 			}
 		})
+
+		if err == nil && shouldUpdateBoost && req.Boost != nil {
+			state.Update[state.InterfaceConfig](appState, state.SectionInterface, func(si *state.InterfaceConfig) {
+				si.SetBoost(*req.Boost)
+			})
+		}
 
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -240,8 +250,8 @@ func PushRecordingToCloud(cfg *config.Config) gin.HandlerFunc {
 		}
 
 		logger.Info("File pushed to cloud drive",
-			slog.String("source", req.Source),
-			slog.String("target", req.Target),
+			slog.String("cloud.source", req.Source),
+			slog.String("cloud.target", req.Target),
 		)
 		c.JSON(http.StatusOK, gin.H{"status": "success"})
 	}

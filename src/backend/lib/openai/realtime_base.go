@@ -21,10 +21,13 @@ type SessionUpdateEvent struct {
 }
 
 type SessionConfig struct {
-	Type         string       `json:"type,omitempty"`
-	Modalities   []string     `json:"modalities,omitempty"`
-	Instructions string       `json:"instructions,omitempty"`
-	Audio        *AudioConfig `json:"audio,omitempty"`
+	Type              string       `json:"type,omitempty"`
+	Modalities        []string     `json:"modalities,omitempty"`
+	Instructions      string       `json:"instructions,omitempty"`
+	Voice             string       `json:"voice,omitempty"`
+	InputAudioFormat  string       `json:"input_audio_format,omitempty"`
+	OutputAudioFormat string       `json:"output_audio_format,omitempty"`
+	Audio             *AudioConfig `json:"audio,omitempty"`
 }
 
 type AudioConfig struct {
@@ -98,14 +101,13 @@ func (m *OpenAIManager) isOriginalLanguage(lang string) bool {
 	return code == m.OriginalLanguage
 }
 
-func NewOpenAIManager(cfg *config.Config, apiKey, translateModel, transcribeModel, voice, originalLang string, audioInSize, audioOutSize, subtitleSize int) (*OpenAIManager, error) {
-	langCode := cfg.ResolveLanguageCode(originalLang)
-	transcriber, _ := NewTranscriptionManager(cfg, apiKey, transcribeModel, langCode, audioInSize, audioOutSize, subtitleSize)
-	translator, _ := NewTranslationManager(cfg, apiKey, translateModel, voice, langCode, audioInSize, audioOutSize, subtitleSize)
+func NewOpenAIManager(cfg *config.Config, appState *state.AppState, apiKey, translateModel, transcribeModel, voice, originalLang string) (*OpenAIManager, error) {
+	transcriber, _ := NewTranscriptionManager(cfg, appState, apiKey, transcribeModel, originalLang, 100, 1000, 100)
+	translator, _ := NewTranslationManager(cfg, appState, apiKey, translateModel, voice, originalLang, 100, 1000, 100)
 	
 	return &OpenAIManager{
 		Config:           cfg,
-		OriginalLanguage: langCode,
+		OriginalLanguage: originalLang,
 		Transcriber:      transcriber,
 		Translator:       translator,
 	}, nil
@@ -165,23 +167,47 @@ func (m *OpenAIManager) PushAudio(chunk []float32) {
 	m.Translator.PushAudio(chunk)
 }
 
-func DecodeAudioDelta(delta64 string) ([]float32, error) {
+func DecodeAudioDelta(delta64 string, targetRate int) ([]float32, error) {
 	data, err := base64.StdEncoding.DecodeString(delta64)
 	if err != nil {
 		return nil, err
 	}
-	count := len(data) / 2
-	// 24kHz Mono -> 48kHz Stereo
-	// We need 2x for rate and 2x for channels = 4x
-	floats := make([]float32, count*4)
-	for i := 0; i < count; i++ {
-		v := int16(data[i*2]) | int16(data[i*2+1])<<8
-		f := float32(v) / 32767.0
-		base := i * 4
-		floats[base] = f     // L
-		floats[base+1] = f   // R
-		floats[base+2] = f   // L (next 48k sample)
-		floats[base+3] = f   // R (next 48k sample)
+	srcLen := len(data) / 2
+	if srcLen == 0 {
+		return []float32{}, nil
 	}
+
+	src := make([]float32, srcLen)
+	for i := 0; i < srcLen; i++ {
+		v := int16(data[i*2]) | int16(data[i*2+1])<<8
+		src[i] = float32(v) / 32767.0
+	}
+
+	if targetRate <= 0 {
+		targetRate = 48000
+	}
+
+	ratio := 24000.0 / float64(targetRate)
+	dstLen := int(float64(srcLen) / ratio)
+	floats := make([]float32, dstLen*2)
+
+	for i := 0; i < dstLen; i++ {
+		srcIdx := float64(i) * ratio
+		idx0 := int(srcIdx)
+		idx1 := idx0 + 1
+		if idx1 >= srcLen {
+			idx1 = srcLen - 1
+		}
+		t := srcIdx - float64(idx0)
+
+		var val float32
+		if idx0 < srcLen {
+			val = src[idx0]*(1.0-float32(t)) + src[idx1]*float32(t)
+		}
+
+		floats[i*2] = val     // Left channel
+		floats[i*2+1] = val   // Right channel
+	}
+
 	return floats, nil
 }

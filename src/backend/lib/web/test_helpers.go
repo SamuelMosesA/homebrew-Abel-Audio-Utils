@@ -50,7 +50,7 @@ type MockTranslator struct {
 func (m *MockTranslator) SetEnabled(enabled bool) {}
 func (m *MockTranslator) GetChannel(lang string) chan []float32 { return nil }
 func (m *MockTranslator) ListSessions() []state.SessionInfo {
-	return []state.SessionInfo{{Language: "English"}}
+	return []state.SessionInfo{{Language: "en"}}
 }
 func (m *MockTranslator) GetSubtitles(lang string) (chan string, func()) {
 	m.subtitleChan = make(chan string, 10)

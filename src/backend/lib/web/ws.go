@@ -41,8 +41,8 @@ func NewWSHandler(appState *state.AppState, cfg *config.Config) gin.HandlerFunc 
 		// Set the active admin client (multiple can now connect, but let's keep track of 'the' admin if needed)
 		appState.AdminClient = wsClient
 		clientLogger := logger.With(
-			slog.String("client_id", fmt.Sprintf("%p", wsClient)),
-			slog.String("session_id", sessionID),
+			slog.String("client.id", fmt.Sprintf("%p", wsClient)),
+			slog.String("client.session_id", sessionID),
 		)
 		clientLogger.Info("New admin connected")
 

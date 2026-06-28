@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"abel/src/backend/lib/config"
 	"abel/src/backend/lib/state"
@@ -22,6 +21,7 @@ import (
 
 type TranslationManager struct {
 	Config             *config.Config
+	AppState           *state.AppState
 	APIKey             string
 	Model              string
 	Voice              string
@@ -38,9 +38,10 @@ type TranslationManager struct {
 	OnStateChange func()
 }
 
-func NewTranslationManager(cfg *config.Config, apiKey, model, voice, originalLang string, audioInSize, audioOutSize, subtitleSize int) (*TranslationManager, error) {
+func NewTranslationManager(cfg *config.Config, appState *state.AppState, apiKey, model, voice, originalLang string, audioInSize, audioOutSize, subtitleSize int) (*TranslationManager, error) {
 	return &TranslationManager{
 		Config:             cfg,
+		AppState:           appState,
 		APIKey:             apiKey,
 		Model:              model,
 		Voice:              voice,
@@ -127,6 +128,9 @@ func (m *TranslationManager) GetSubtitles(language string) (chan string, func())
 }
 
 func (m *TranslationManager) GetChannel(language string) chan []float32 {
+	if !m.Enabled.Load() {
+		return nil
+	}
 	if m.isOriginalLanguage(language) || language == "" {
 		return nil
 	}
@@ -164,27 +168,6 @@ func (m *TranslationManager) PushAudio(chunk []float32) {
 		return
 	}
 
-	logger := slog.With("component", "openai")
-
-	m.Subscribers.Range(func(key, value interface{}) bool {
-		lang := key.(string)
-		if m.isOriginalLanguage(lang) {
-			return true
-		}
-		if _, ok := m.Sessions.Load(lang); !ok {
-			now := time.Now()
-			if last, ok := m.LastRestart.Load(lang); ok {
-				if now.Sub(last.(time.Time)) < 5*time.Second {
-					return true
-				}
-			}
-			m.LastRestart.Store(lang, now)
-			logger.Info("Auto-starting translation", slog.String("language", lang))
-			m.GetChannel(lang)
-		}
-		return true
-	})
-
 	m.Sessions.Range(func(key, value interface{}) bool {
 		lang := key.(string)
 		if m.isOriginalLanguage(lang) {
@@ -200,12 +183,58 @@ func (m *TranslationManager) PushAudio(chunk []float32) {
 }
 
 func (m *TranslationManager) downsample(chunk []float32) []byte {
-	downsampled := make([]int16, 0, len(chunk)/4)
-	for i := 0; i < len(chunk)-3; i += 4 {
-		avg := (chunk[i] + chunk[i+1] + chunk[i+2] + chunk[i+3]) / 4.0
-		if avg > 1.0 { avg = 1.0 } else if avg < -1.0 { avg = -1.0 }
-		downsampled = append(downsampled, int16(avg*32767))
+	srcRate := int(m.AppState.Config().SampleRate())
+	if srcRate <= 0 {
+		srcRate = m.Config.SampleRate
 	}
+	dstRate := 24000 // OpenAI Realtime expects 24kHz
+
+	// If sample rates are already equal to 24000 (mono conversion only)
+	if srcRate == dstRate {
+		downsampled := make([]int16, len(chunk)/2)
+		for i := 0; i < len(chunk)/2; i++ {
+			avg := (chunk[i*2] + chunk[i*2+1]) / 2.0
+			if avg > 1.0 { avg = 1.0 } else if avg < -1.0 { avg = -1.0 }
+			downsampled[i] = int16(avg * 32767)
+		}
+		bytes := make([]byte, len(downsampled)*2)
+		for i, v := range downsampled {
+			bytes[i*2] = byte(v & 0xff)
+			bytes[i*2+1] = byte(v >> 8)
+		}
+		return bytes
+	}
+
+	// General downsampling using accumulators/ratios
+	ratio := float64(srcRate) / float64(dstRate)
+	srcFrames := len(chunk) / 2
+	dstFrames := int(float64(srcFrames) / ratio)
+	if dstFrames <= 0 {
+		return nil
+	}
+
+	downsampled := make([]int16, dstFrames)
+	for i := 0; i < dstFrames; i++ {
+		startFrame := int(float64(i) * ratio)
+		endFrame := int(float64(i+1) * ratio)
+		if endFrame > srcFrames {
+			endFrame = srcFrames
+		}
+		if endFrame <= startFrame {
+			endFrame = startFrame + 1
+		}
+
+		var sum float32
+		count := 0
+		for f := startFrame; f < endFrame; f++ {
+			sum += chunk[f*2] + chunk[f*2+1]
+			count += 2
+		}
+		avg := sum / float32(count)
+		if avg > 1.0 { avg = 1.0 } else if avg < -1.0 { avg = -1.0 }
+		downsampled[i] = int16(avg * 32767)
+	}
+
 	bytes := make([]byte, len(downsampled)*2)
 	for i, v := range downsampled {
 		bytes[i*2] = byte(v & 0xff)
@@ -216,7 +245,7 @@ func (m *TranslationManager) downsample(chunk []float32) []byte {
 
 func (m *TranslationManager) runSession(s *RealtimeSession) {
 	logger := slog.With("component", "openai")
-	logger.Info("Starting translation session", slog.String("language", s.Language))
+	logger.Info("Starting translation session", slog.String("ai.language", s.Language))
 	defer m.Sessions.Delete(s.Language)
 	defer close(s.AudioOut)
 
@@ -237,11 +266,11 @@ func (m *TranslationManager) runSession(s *RealtimeSession) {
 			body = string(buf[:n])
 		}
 		logger.Error("Translation dial error",
-			slog.String("language", s.Language),
-			slog.String("resolved_name", m.Config.ResolveLanguageName(s.Language)),
-			slog.Int("status", status),
-			slog.Any("error", err),
-			slog.String("body", body),
+			slog.String("ai.language", s.Language),
+			slog.String("ai.resolved_name", m.Config.ResolveLanguageName(s.Language)),
+			slog.Int("openai.status_code", status),
+			slog.Any("openai.error", err),
+			slog.String("openai.response_body", body),
 		)
 		return
 	}
@@ -267,21 +296,34 @@ func (m *TranslationManager) runSession(s *RealtimeSession) {
 			var raw map[string]interface{}
 			if err := json.Unmarshal(message, &raw); err != nil { continue }
 			
-			if raw["type"] != "session.input_audio_buffer.speech_started" && raw["type"] != "session.input_audio_buffer.speech_stopped" {
-				logger.Debug("Event received",
-					slog.String("language", s.Language),
-					slog.Any("event_type", raw["type"]),
+			if telemetry.AIEventsReceived != nil {
+				eventType := "unknown"
+				if t, ok := raw["type"].(string); ok {
+					eventType = t
+				}
+				telemetry.AIEventsReceived.Add(context.Background(), 1,
+					metric.WithAttributes(
+						attribute.String("language", s.Language),
+						attribute.String("event_type", eventType),
+					),
 				)
 			}
 
 			// Revert to original event names for translation session
 			if raw["type"] == "session.output_audio.delta" {
+				if telemetry.AIAudioDeltasReceived != nil {
+					telemetry.AIAudioDeltasReceived.Add(context.Background(), 1,
+						metric.WithAttributes(
+							attribute.String("language", s.Language),
+						),
+					)
+				}
 				delta, _ := raw["delta"].(string)
-				logger.Debug("Audio delta received",
-					slog.String("language", s.Language),
-					slog.Int("bytes", len(delta)),
-				)
-				floats, err := DecodeAudioDelta(delta)
+				targetRate := int(m.AppState.Config().SampleRate())
+				if targetRate <= 0 {
+					targetRate = m.Config.SampleRate
+				}
+				floats, err := DecodeAudioDelta(delta, targetRate)
 				if err == nil {
 					select {
 					case s.AudioOut <- floats:
@@ -315,8 +357,8 @@ func (m *TranslationManager) runSession(s *RealtimeSession) {
 				}
 			} else if raw["type"] == "error" {
 				logger.Error("Translation error",
-					slog.String("language", s.Language),
-					slog.Any("error", raw["error"]),
+					slog.String("ai.language", s.Language),
+					slog.Any("openai.error", raw["error"]),
 				)
 				return
 			}

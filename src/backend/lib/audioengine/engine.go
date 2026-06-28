@@ -45,43 +45,67 @@ func StartAudioEngine(streamer AudioStreamer, appState *state.AppState, cfg *con
 			}
 		}()
 
-		in := make([]float32, cfg.BufferSize*dev.MaxInputChannels)
+		var in []float32
+		var stream PortAudioStream
+		var err error
+		openedSampleRate := cfg.SampleRate
+		openedChannels := dev.MaxInputChannels
+
 		logger.Info("Opening stream",
-			slog.String("device", dev.Name),
-			slog.Int("channels", dev.MaxInputChannels),
-			slog.Int("sample_rate", cfg.SampleRate),
+			slog.String("audio.device", dev.Name),
+			slog.Int("audio.channels", openedChannels),
+			slog.Int("audio.sample_rate", openedSampleRate),
 		)
-		
-		stream, err := streamer.OpenStream(pa.StreamParameters{
-			Input:      pa.StreamDeviceParameters{Device: dev, Channels: dev.MaxInputChannels, Latency: dev.DefaultLowInputLatency},
-			SampleRate: float64(cfg.SampleRate), FramesPerBuffer: cfg.BufferSize,
+
+		// Try 1: Configured sample rate and MaxInputChannels
+		in = make([]float32, cfg.BufferSize*openedChannels)
+		stream, err = streamer.OpenStream(pa.StreamParameters{
+			Input:      pa.StreamDeviceParameters{Device: dev, Channels: openedChannels, Latency: dev.DefaultLowInputLatency},
+			SampleRate: float64(openedSampleRate), FramesPerBuffer: cfg.BufferSize,
 		}, in)
-		
+
+		// Try 2: If configured sample rate failed, fallback directly to DefaultSampleRate of the device
 		if err != nil {
-			logger.Warn("Failed to open stream, trying fallback with 2 channels",
-				slog.Int("requested_channels", dev.MaxInputChannels),
-				slog.Any("error", err),
+			logger.Warn("Failed to open stream at requested sample rate, falling back to device default",
+				slog.Int("audio.requested_rate", cfg.SampleRate),
+				slog.Float64("audio.default_rate", dev.DefaultSampleRate),
+				slog.Any("audio.error", err),
 			)
-			
-			// Fallback to 2 channels if possible
-			channels := 2
-			if dev.MaxInputChannels < 2 {
-				channels = dev.MaxInputChannels
+			openedSampleRate = int(dev.DefaultSampleRate)
+			if openedSampleRate <= 0 {
+				openedSampleRate = 44100 // Safe default fallback
 			}
-			
-			if channels > 0 {
-				in = make([]float32, cfg.BufferSize*channels)
-				stream, err = streamer.OpenStream(pa.StreamParameters{
-					Input:      pa.StreamDeviceParameters{Device: dev, Channels: channels, Latency: dev.DefaultLowInputLatency},
-					SampleRate: float64(cfg.SampleRate), FramesPerBuffer: cfg.BufferSize,
-				}, in)
-			}
+			in = make([]float32, cfg.BufferSize*openedChannels)
+			stream, err = streamer.OpenStream(pa.StreamParameters{
+				Input:      pa.StreamDeviceParameters{Device: dev, Channels: openedChannels, Latency: dev.DefaultLowInputLatency},
+				SampleRate: float64(openedSampleRate), FramesPerBuffer: cfg.BufferSize,
+			}, in)
+		}
+
+		// Try 3: If that still failed, try fallback to 2 channels
+		if err != nil && openedChannels > 2 {
+			logger.Warn("Failed to open stream with max channels, trying fallback with 2 channels",
+				slog.Int("audio.requested_channels", openedChannels),
+				slog.Any("audio.error", err),
+			)
+			openedChannels = 2
+			in = make([]float32, cfg.BufferSize*openedChannels)
+			stream, err = streamer.OpenStream(pa.StreamParameters{
+				Input:      pa.StreamDeviceParameters{Device: dev, Channels: openedChannels, Latency: dev.DefaultLowInputLatency},
+				SampleRate: float64(openedSampleRate), FramesPerBuffer: cfg.BufferSize,
+			}, in)
 		}
 
 		if err != nil {
-			logger.Error("Error opening stream", slog.Any("error", err))
+			logger.Error("Error opening stream: all configurations failed", slog.Any("audio.error", err))
 			return
 		}
+
+		// Update state with the actually opened sample rate!
+		state.Update[state.InterfaceConfig](appState, state.SectionInterface, func(s *state.InterfaceConfig) {
+			s.SetSampleRate(int32(openedSampleRate))
+		})
+
 		stream.Start()
 		defer stream.Stop()
 		defer stream.Close()
@@ -111,8 +135,8 @@ func StartAudioEngine(streamer AudioStreamer, appState *state.AppState, cfg *con
 
 			stereoChunk := make([]float32, cfg.BufferSize*2)
 			for i := 0; i < cfg.BufferSize; i++ {
-				idxL := (i * dev.MaxInputChannels) + chL
-				idxR := (i * dev.MaxInputChannels) + chR
+				idxL := (i * openedChannels) + chL
+				idxR := (i * openedChannels) + chR
 
 				var sL, sR float32
 				if idxL < len(in) {
@@ -150,7 +174,7 @@ func StartAudioEngine(streamer AudioStreamer, appState *state.AppState, cfg *con
 			}
 
 			if telemetry.AudioLoopLatency != nil {
-				telemetry.AudioLoopLatency.Record(context.Background(), time.Since(startTime).Seconds())
+				telemetry.AudioLoopLatency.Record(context.Background(), float64(time.Since(startTime).Nanoseconds())/1e6)
 			}
 		}
 	}()
